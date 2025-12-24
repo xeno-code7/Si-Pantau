@@ -5,8 +5,6 @@ import 'package:intl/intl.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
 import 'car_edit_screen.dart';
-import '../utils/rul_helper.dart';
-import '../utils/notification_helper.dart';
 
 class CarDetailScreen extends StatelessWidget {
   final String docId;
@@ -20,11 +18,10 @@ class CarDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final User? user = FirebaseAuth.instance.currentUser; // Ambil user aktif [cite: 256]
+    final User? user = FirebaseAuth.instance.currentUser;
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     final textColor = isDarkMode ? Colors.white : Colors.black;
 
-    // Inisialisasi format tanggal Indonesia [cite: 257]
     initializeDateFormatting('id_ID', null);
 
     return StreamBuilder<DocumentSnapshot>(
@@ -33,55 +30,62 @@ class CarDetailScreen extends StatelessWidget {
           .doc(user!.uid)
           .collection('cars')
           .doc(docId)
-          .snapshots(), // Pantau data secara real-time [cite: 258]
+          .snapshots(),
       builder: (context, snapshot) {
         Map<String, dynamic> data = initialData ?? {};
 
         if (snapshot.hasData && snapshot.data!.exists) {
-          data = snapshot.data!.data() as Map<String, dynamic>; // Ambil data terbaru [cite: 259]
+          data = snapshot.data!.data() as Map<String, dynamic>;
         }
 
-        // --- DATA KENDARAAN ---
+        // --- 1. DATA IDENTITAS ---
         final String namaKendaraan = data['nama_kendaraan'] ?? "-";
         final String plat = data['plat'] ?? "-";
-        final String jenisKendaraan = data['jenis_kendaraan'] ?? "motor";
         final String? photoUrl = data['photo_url'];
+        
+        // --- 2. DATA ATRIBUT ---
+        final String tahun = data['tahun']?.toString() ?? "-";
         final int odoNow = int.tryParse(data['odo']?.toString() ?? "0") ?? 0;
+        final String transmisi = data['transmisi'] ?? "Matic";
+        final String bahanBakar = data['bahan_bakar'] ?? "Bensin";
+        final String nomorRangka = data['rangka'] ?? "-"; 
+        final String nomorMesin = data['mesin'] ?? "-";
 
-        // --- DATA SERVIS TERAKHIR ---
+        // --- 3. LOGIKA PAJAK & STNK OTOMATIS ---
+        final bool manualStnkAktif = data['stnk_aktif'] ?? true;
+        DateTime? pajakDate;
+        String pajakStr = "-";
+        final rawPajak = data['pajak'];
+
+        if (rawPajak is Timestamp) {
+          pajakDate = rawPajak.toDate();
+          pajakStr = DateFormat('dd MMMM yyyy', 'id_ID').format(pajakDate);
+        }
+
+        final bool isExpired = pajakDate != null && DateTime.now().isAfter(pajakDate);
+        final bool displayAktif = manualStnkAktif && !isExpired;
+
+        // --- 4. LOGIKA COUNTDOWN SERVIS ---
+        final double sisaKmML = double.tryParse(data['prediksi_rul']?.toString() ?? "0.0") ?? 0.0;
+        final rawDate = data['last_service_date'];
+        DateTime? lastServiceDate = (rawDate is Timestamp) ? rawDate.toDate() : null;
+        
+        // Data Tambahan Riwayat Servis
         final int lastServiceOdo = int.tryParse(data['last_service_odo']?.toString() ?? "0") ?? 0;
         final String serviceType = data['service_type'] ?? "-";
         
-        DateTime? lastServiceDate;
-        final rawDate = data['last_service_date'];
-
-        // Parsing tanggal servis [cite: 263-265]
-        try {
-          if (rawDate is Timestamp) {
-            lastServiceDate = rawDate.toDate();
-          } else if (rawDate is String && rawDate.isNotEmpty) {
-            lastServiceDate = DateFormat('dd MMMM yyyy', 'id_ID').parse(rawDate);
-          }
-        } catch (_) {
-          lastServiceDate = null;
+        int sisaHariBaru = 0;
+        if (lastServiceDate != null) {
+          int bulanTambahan = (data['jenis_kendaraan']?.toString().toLowerCase() == "mobil") ? 5 : 2;
+          DateTime targetDate = DateTime(lastServiceDate.year, lastServiceDate.month + bulanTambahan, lastServiceDate.day);
+          sisaHariBaru = targetDate.difference(DateTime.now()).inDays;
         }
 
-        // --- HITUNG LOGIKA PREDIKSI (RUL) ---
-        RulResult? rul;
-        if (lastServiceDate != null && lastServiceOdo > 0) {
-          rul = RulHelper.hitungRul(
-            jenisKendaraan: jenisKendaraan,
-            odoSekarang: odoNow,
-            odoTerakhirServis: lastServiceOdo,
-            tanggalTerakhirServis: lastServiceDate,
-          ); // Hitung sisa KM dan Hari 
-
-          // Kirim notifikasi jika status tidak aman 
-          if (rul.status != "AMAN") {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              NotificationHelper.showRulNotification(context, rul!);
-            });
-          }
+        Color statusColor = const Color(0xFF5CB85C); 
+        if (sisaKmML <= 200 || sisaHariBaru <= 7) {
+          statusColor = Colors.red;
+        } else if (sisaKmML <= 1000 || sisaHariBaru <= 14) {
+          statusColor = Colors.orange;
         }
 
         return Scaffold(
@@ -95,103 +99,120 @@ class CarDetailScreen extends StatelessWidget {
             ),
           ),
           body: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 20),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // --- KOTAK FOTO KENDARAAN ---
+                photoUrl != null
+                    ? Image.network(photoUrl, height: 180, fit: BoxFit.contain)
+                    : const Icon(Icons.directions_car, size: 100, color: Colors.grey),
+                
+                const SizedBox(height: 15),
+                Text(plat, style: TextStyle(fontWeight: FontWeight.w900, fontSize: 22, color: textColor)),
+                Text(namaKendaraan, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.grey)),
+                
+                const SizedBox(height: 25),
+                const Divider(),
+
+                // BOX COUNTDOWN
                 Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: isDarkMode ? const Color(0xFF1E1E1E) : Colors.white,
-                    border: Border.all(color: const Color(0xFF5CB85C), width: 2),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(color: statusColor, borderRadius: BorderRadius.circular(12)),
                   child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      photoUrl != null
-                          ? Image.network(photoUrl, height: 150, fit: BoxFit.contain)
-                          : const Icon(Icons.directions_car, size: 80, color: Colors.grey),
-                      const SizedBox(height: 10),
-                      Text(namaKendaraan, style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: textColor)),
-                      Text(plat, style: TextStyle(fontWeight: FontWeight.bold, color: textColor.withOpacity(0.7))),
+                      const Text("COUNTDOWN SERVIS: ", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 8),
+                      Text("Sisa: ${sisaKmML.toStringAsFixed(1)} KM atau $sisaHariBaru hari lagi",
+                          style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900)),
                     ],
                   ),
                 ),
 
-                const SizedBox(height: 20),
+                const SizedBox(height: 25),
 
-                // --- BAGIAN COUNTDOWN SERVIS (PREDIKSI) ---
-                if (rul != null)
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: rul.status == "HARUS SERVIS"
-                          ? Colors.red
-                          : (rul.status == "MENDEKATI SERVIS" ? Colors.orange : const Color(0xFF5CB85C)),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text("COUNTDOWN SERVIS", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
-                        const SizedBox(height: 8),
-                        Text(
-                          "Sisa: ${rul.sisaKm} KM atau ${rul.sisaHari} hari lagi",
-                          style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900),
+                // INFORMASI DETAIL
+                _buildDetailRow("Tahun", tahun, textColor),
+                _buildDetailRow("Odometer", "${NumberFormat("#,###").format(odoNow)} KM", textColor),
+                _buildDetailRow("Pajak", pajakStr, textColor),
+                _buildDetailRow("Jenis transmisi", transmisi, textColor),
+                _buildDetailRow("Jenis bahan bakar", bahanBakar, textColor),
+                _buildDetailRow("Nomor Rangka", nomorRangka, textColor),
+                _buildDetailRow("Nomor Mesin", nomorMesin, textColor),
+
+                // STATUS PAJAK DAN STNK
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 18),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text("Pajak dan STNK", style: TextStyle(color: Colors.grey[600], fontSize: 15)),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: displayAktif ? const Color(0xFF8CC67E).withOpacity(0.2) : Colors.red.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(6),
                         ),
-                        Text(
-                          "Status: ${rul.status}",
-                          style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: 12),
+                        child: Text(
+                          displayAktif ? "Aktif" : "Tidak Aktif",
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold, 
+                            color: displayAktif ? const Color(0xFF5CB85C) : Colors.red
+                          ),
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
+                ),
+
+                // --- BAGIAN RIWAYAT SERVIS (DITAMBAHKAN) ---
+                const Divider(),
+                const SizedBox(height: 10),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    "Riwayat Service", 
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold, 
+                      fontSize: 16, 
+                      color: textColor, 
+                      decoration: TextDecoration.underline
+                    )
+                  ),
+                ),
+                const SizedBox(height: 12),
+                lastServiceDate == null
+                    ? const Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text("Belum ada data servis")
+                      )
+                    : Column(
+                        children: [
+                          _buildDetailRow(
+                            DateFormat('dd MMM yyyy', 'id_ID').format(lastServiceDate), 
+                            serviceType, 
+                            textColor
+                          ),
+                          _buildDetailRow("Odo Terakhir Servis", "$lastServiceOdo KM", textColor),
+                        ],
+                      ),
+                // ------------------------------------------
 
                 const SizedBox(height: 30),
 
-                // --- DETAIL INFORMASI ---
-                _buildDetailRow("Jenis Kendaraan", jenisKendaraan.toUpperCase(), textColor),
-                _buildDetailRow("Odometer Sekarang", "$odoNow KM", textColor),
-                const Divider(),
-                const SizedBox(height: 10),
-
-                // --- INFO SERVIS TERAKHIR ---
-                Text("Servis Terakhir", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: textColor)),
-                const SizedBox(height: 16),
-
-                lastServiceDate == null
-                    ? const Text("Belum ada data servis")
-                    : Column(
-                        children: [
-                          _buildDetailRow("Tanggal", DateFormat('dd MMMM yyyy', 'id_ID').format(lastServiceDate), textColor),
-                          _buildDetailRow("Jenis Servis", serviceType, textColor),
-                          _buildDetailRow("Odo Servis", "$lastServiceOdo KM", textColor),
-                        ],
-                      ),
-
-                const SizedBox(height: 40),
-
-                // --- TOMBOL EDIT ---
+                // TOMBOL EDIT
                 SizedBox(
                   width: double.infinity,
                   height: 50,
                   child: ElevatedButton(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF5CB85C),
+                      backgroundColor: const Color(0xFF8CC67E),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     ),
                     onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => CarEditScreen(docId: docId, currentData: data),
-                        ),
-                      );
+                      Navigator.push(context, MaterialPageRoute(builder: (_) => CarEditScreen(docId: docId, currentData: data)));
                     },
-                    child: const Text("Edit Data Kendaraan", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                    child: const Text("Edit Data", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                   ),
                 ),
                 const SizedBox(height: 30),
@@ -203,7 +224,6 @@ class CarDetailScreen extends StatelessWidget {
     );
   }
 
-  // Widget Helper untuk Baris Detail [cite: 316]
   Widget _buildDetailRow(String label, String value, Color textColor) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 18),

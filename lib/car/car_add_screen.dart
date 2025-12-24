@@ -23,23 +23,22 @@ class _CarAddScreenState extends State<CarAddScreen> {
   final List<String> _jenisKendaraanOptions = ["motor", "mobil"];
 
   // ================= DATA KENDARAAN =================
-  final _namaController = TextEditingController(); // Innova / Vario
+  final _namaController = TextEditingController();
   final _platController = TextEditingController();
   final _tahunController = TextEditingController();
   final _warnaController = TextEditingController();
   final _odoController = TextEditingController();
 
+  // ================= DATA BARU (RANGKA, MESIN, PAJAK) =================
+  final _rangkaController = TextEditingController();
+  final _mesinController = TextEditingController();
+  DateTime? _pajakDate;
+
   // ================= SERVIS TERAKHIR =================
   final _serviceOdoController = TextEditingController();
   DateTime? _serviceDate;
   String _serviceType = "Ganti Oli";
-
-  final _serviceTypes = [
-    'Ganti Oli',
-    'Servis Rutin',
-    'Tune Up',
-    'Lainnya'
-  ];
+  final _serviceTypes = ['Ganti Oli', 'Servis Rutin', 'Tune Up', 'Lainnya'];
 
   Uint8List? _imageBytes;
 
@@ -59,7 +58,7 @@ class _CarAddScreenState extends State<CarAddScreen> {
     }
   }
 
-  // ================= PICK DATE =================
+  // ================= PICK DATE HELPERS =================
   Future<void> _pickServiceDate() async {
     final picked = await showDatePicker(
       context: context,
@@ -67,37 +66,34 @@ class _CarAddScreenState extends State<CarAddScreen> {
       firstDate: DateTime(2000),
       lastDate: DateTime.now(),
     );
+    if (picked != null) setState(() => _serviceDate = picked);
+  }
 
-    if (picked != null) {
-      setState(() => _serviceDate = picked);
-    }
+  Future<void> _pickPajakDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now(),
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100), // Pajak bisa di masa depan
+    );
+    if (picked != null) setState(() => _pajakDate = picked);
   }
 
   // ================= UPLOAD IMAGE =================
   Future<String?> _uploadImage() async {
     if (_imageBytes == null) return null;
-
     final uid = user!.uid;
     final fileName = 'vehicle_${DateTime.now().millisecondsSinceEpoch}.jpg';
-    final ref =
-        FirebaseStorage.instance.ref('vehicle_photos/$uid/$fileName');
-
-    await ref.putData(
-      _imageBytes!,
-      SettableMetadata(contentType: 'image/jpeg'),
-    );
-
+    final ref = FirebaseStorage.instance.ref('vehicle_photos/$uid/$fileName');
+    await ref.putData(_imageBytes!, SettableMetadata(contentType: 'image/jpeg'));
     return await ref.getDownloadURL();
   }
 
   // ================= SAVE DATA =================
   Future<void> _saveCar() async {
-    if (_namaController.text.isEmpty ||
-        _platController.text.isEmpty ||
-        _odoController.text.isEmpty) {
+    if (_namaController.text.isEmpty || _platController.text.isEmpty || _odoController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text("Lengkapi data wajib"),
-          backgroundColor: Colors.red));
+          content: Text("Lengkapi data wajib"), backgroundColor: Colors.red));
       return;
     }
 
@@ -120,13 +116,17 @@ class _CarAddScreenState extends State<CarAddScreen> {
         'odo': int.parse(_odoController.text),
         'photo_url': photoUrl,
 
-        // ===== SERVIS TERAKHIR (AMAN) =====
-        'last_service_date':
-            _serviceDate != null ? Timestamp.fromDate(_serviceDate!) : null,
-        'last_service_odo': _serviceOdoController.text.isNotEmpty
-            ? int.parse(_serviceOdoController.text)
-            : null,
+        // ===== DATA BARU (Sesuai CarDetailScreen) =====
+        'rangka': _rangkaController.text,
+        'mesin': _mesinController.text,
+        'pajak': _pajakDate != null ? Timestamp.fromDate(_pajakDate!) : null,
+        'stnk_aktif': true, // Otomatis aktif saat buat baru
+
+        // ===== SERVIS TERAKHIR =====
+        'last_service_date': _serviceDate != null ? Timestamp.fromDate(_serviceDate!) : null,
+        'last_service_odo': _serviceOdoController.text.isNotEmpty ? int.parse(_serviceOdoController.text) : null,
         'service_type': _serviceType,
+        'prediksi_rul': 0.0, // Initial value untuk ML agar tidak error
 
         'created_at': FieldValue.serverTimestamp(),
       });
@@ -134,18 +134,15 @@ class _CarAddScreenState extends State<CarAddScreen> {
       if (mounted) {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text("Kendaraan berhasil ditambahkan"),
-            backgroundColor: Colors.green));
+            content: Text("Kendaraan berhasil ditambahkan"), backgroundColor: Colors.green));
       }
     } catch (e) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text("Error: $e")));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  // ================= UI =================
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -154,55 +151,57 @@ class _CarAddScreenState extends State<CarAddScreen> {
         padding: const EdgeInsets.all(20),
         child: Column(
           children: [
-            _buildDropdown(
-              "Jenis Kendaraan",
-              _jenisKendaraan,
-              _jenisKendaraanOptions,
-              (v) => setState(() => _jenisKendaraan = v!),
-            ),
-
+            _buildDropdown("Jenis Kendaraan", _jenisKendaraan, _jenisKendaraanOptions, (v) => setState(() => _jenisKendaraan = v!)),
             _buildInput("Nama Kendaraan (ex: Innova)", _namaController),
             _buildInput("Plat Nomor", _platController),
             _buildInput("Tahun", _tahunController, isNumber: true),
             _buildInput("Warna", _warnaController),
-            _buildInput("Odometer Saat Ini", _odoController,
-                isNumber: true, suffixText: "KM"),
+            _buildInput("Odometer Saat Ini", _odoController, isNumber: true, suffixText: "KM"),
 
-            const Divider(height: 40),
+            const Divider(height: 30),
+            const Text("Detail Spesifikasi", style: TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 10),
+            
+            // INPUT BARU
+            _buildInput("Nomor Rangka", _rangkaController),
+            _buildInput("Nomor Mesin", _mesinController),
 
-            const Text("Servis Terakhir",
-                style: TextStyle(fontWeight: FontWeight.bold)),
-
+            // INPUT TANGGAL PAJAK
             GestureDetector(
-              onTap: _pickServiceDate,
+              onTap: _pickPajakDate,
               child: AbsorbPointer(
                 child: _buildInput(
-                  _serviceDate == null
-                      ? "Tanggal Servis Terakhir"
-                      : DateFormat('dd MMMM yyyy', 'id_ID')
-                          .format(_serviceDate!),
+                  _pajakDate == null ? "Tanggal Jatuh Tempo Pajak" : DateFormat('dd MMMM yyyy', 'id_ID').format(_pajakDate!),
                   TextEditingController(),
                 ),
               ),
             ),
 
-            _buildInput("Odometer Saat Servis", _serviceOdoController,
-                isNumber: true, suffixText: "KM"),
+            const Divider(height: 40),
+            const Text("Servis Terakhir", style: TextStyle(fontWeight: FontWeight.bold)),
 
-            _buildDropdown(
-              "Jenis Servis",
-              _serviceType,
-              _serviceTypes,
-              (v) => setState(() => _serviceType = v!),
+            GestureDetector(
+              onTap: _pickServiceDate,
+              child: AbsorbPointer(
+                child: _buildInput(
+                  _serviceDate == null ? "Tanggal Servis Terakhir" : DateFormat('dd MMMM yyyy', 'id_ID').format(_serviceDate!),
+                  TextEditingController(),
+                ),
+              ),
             ),
 
-            const SizedBox(height: 30),
+            _buildInput("Odometer Saat Servis", _serviceOdoController, isNumber: true, suffixText: "KM"),
+            _buildDropdown("Jenis Servis", _serviceType, _serviceTypes, (v) => setState(() => _serviceType = v!)),
 
-            ElevatedButton(
-              onPressed: _isLoading ? null : _saveCar,
-              child: _isLoading
-                  ? const CircularProgressIndicator()
-                  : const Text("Simpan"),
+            const SizedBox(height: 30),
+            SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF5CB85C), foregroundColor: Colors.white),
+                onPressed: _isLoading ? null : _saveCar,
+                child: _isLoading ? const CircularProgressIndicator(color: Colors.white) : const Text("Simpan Kendaraan"),
+              ),
             ),
           ],
         ),
@@ -210,35 +209,25 @@ class _CarAddScreenState extends State<CarAddScreen> {
     );
   }
 
-  // ================= HELPER =================
-  Widget _buildInput(String label, TextEditingController c,
-      {bool isNumber = false, String? suffixText}) {
+  // ================= HELPERS =================
+  Widget _buildInput(String label, TextEditingController c, {bool isNumber = false, String? suffixText}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
       child: TextField(
         controller: c,
-        keyboardType:
-            isNumber ? TextInputType.number : TextInputType.text,
-        decoration: InputDecoration(
-          labelText: label,
-          suffixText: suffixText,
-          border: const OutlineInputBorder(),
-        ),
+        keyboardType: isNumber ? TextInputType.number : TextInputType.text,
+        decoration: InputDecoration(labelText: label, suffixText: suffixText, border: const OutlineInputBorder()),
       ),
     );
   }
 
-  Widget _buildDropdown(String label, String value,
-      List<String> items, Function(String?) onChanged) {
+  Widget _buildDropdown(String label, String value, List<String> items, Function(String?) onChanged) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
       child: DropdownButtonFormField<String>(
         value: value,
-        decoration:
-            InputDecoration(labelText: label, border: const OutlineInputBorder()),
-        items: items
-            .map((e) => DropdownMenuItem(value: e, child: Text(e)))
-            .toList(),
+        decoration: InputDecoration(labelText: label, border: const OutlineInputBorder()),
+        items: items.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
         onChanged: onChanged,
       ),
     );

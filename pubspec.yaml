@@ -9,9 +9,9 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  # Font agar mirip desain Figma
+    
+  # Font & Ikon
   google_fonts: ^6.1.0
-  # Ikon tambahan
   cupertino_icons: ^1.0.2
   
   # Backend Firebase
@@ -21,7 +21,17 @@ dependencies:
   firebase_storage: ^13.0.4
   google_sign_in: ^6.2.1
   
-  # Fitur Pendukung
+  # --- TAMBAHAN FITUR MAPS (FREE) & ML ---
+  # Menggunakan OpenStreetMap (Tanpa Billing & Tanpa API Key)
+  flutter_map: ^8.2.2
+  # Library pendukung koordinat untuk flutter_map
+  latlong2: ^0.9.1
+  # Mengambil koordinat GPS/Lokasi untuk input model ML
+  geolocator: ^14.0.2
+  # Mengirim data ke API Python (Model .pkl)
+  http: ^1.6.0
+  
+  # Fitur Pendukung Lainnya
   shared_preferences: ^2.5.4
   image_picker: ^1.2.1
   intl: ^0.20.2
