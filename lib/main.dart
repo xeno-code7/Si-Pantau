@@ -3,6 +3,8 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart'; // Import Auth
 import 'package:flutter/foundation.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'utils/notification_helper.dart';
+
 
 // Import halaman-halaman penting
 import 'login_screen.dart';
@@ -13,6 +15,8 @@ final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.light);
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await NotificationHelper.init();
+  runApp(const MyApp());
 
   if (kIsWeb) {
     await Firebase.initializeApp(
