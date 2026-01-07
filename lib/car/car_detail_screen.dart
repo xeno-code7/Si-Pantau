@@ -3,11 +3,11 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:intl/date_symbol_data_local.dart';
+
 import 'car_edit_screen.dart';
 
 class CarDetailScreen extends StatelessWidget {
-  final String docId; // Kita hanya butuh ID, sisanya ambil Realtime dari DB
-  // carData dari Home hanya untuk tampilan awal (placeholder) sebelum stream loading
+  final String docId;
   final Map<String, dynamic>? initialData;
 
   const CarDetailScreen({
@@ -22,51 +22,70 @@ class CarDetailScreen extends StatelessWidget {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     final textColor = isDarkMode ? Colors.white : Colors.black;
 
-    // Pastikan format tanggal siap
     initializeDateFormatting('id_ID', null);
 
     return StreamBuilder<DocumentSnapshot>(
-      // MENDENGARKAN PERUBAHAN KHUSUS PADA MOBIL INI
       stream: FirebaseFirestore.instance
           .collection('users')
-          .doc(user?.uid)
+          .doc(user!.uid)
           .collection('cars')
           .doc(docId)
           .snapshots(),
       builder: (context, snapshot) {
-        // Data Mobil (Gabungan antara data live atau data awal)
         Map<String, dynamic> data = initialData ?? {};
 
         if (snapshot.hasData && snapshot.data!.exists) {
           data = snapshot.data!.data() as Map<String, dynamic>;
         }
 
-        // Ambil value
-        String plat = data['plat'] ?? "-";
-        String merk = data['merk'] ?? "-";
-        String tahun = data['tahun'] ?? "-";
-        String odo = data['odo'] ?? "-";
-        String pajakStr = data['pajak_date'] ?? "-";
-        String transmisi = data['transmisi'] ?? "-";
-        String bbm = data['bbm'] ?? "-";
-        String rangka = data['rangka'] ?? "-";
-        String mesin = data['mesin'] ?? "-";
-        String? photoUrl = data['photo_url'];
+        // --- 1. DATA IDENTITAS ---
+        final String namaKendaraan = data['nama_kendaraan'] ?? "-";
+        final String plat = data['plat'] ?? "-";
+        final String? photoUrl = data['photo_url'];
+        
+        // --- 2. DATA ATRIBUT ---
+        final String tahun = data['tahun']?.toString() ?? "-";
+        final int odoNow = int.tryParse(data['odo']?.toString() ?? "0") ?? 0;
+        final String transmisi = data['transmisi'] ?? "Matic";
+        final String bahanBakar = data['bahan_bakar'] ?? "Bensin";
+        final String nomorRangka = data['rangka'] ?? "-"; 
+        final String nomorMesin = data['mesin'] ?? "-";
 
-        // LOGIKA STATUS PAJAK (Merah/Hijau)
-        bool isPajakActive = false;
-        if (pajakStr != "-" && pajakStr != "Belum diset") {
-          try {
-            DateTime pajakDate =
-                DateFormat('dd MMMM yyyy', 'id_ID').parse(pajakStr);
-            DateTime now = DateTime.now();
-            DateTime today = DateTime(now.year, now.month, now.day);
-            if (!pajakDate.isBefore(today)) {
-              isPajakActive = true;
-            }
-          } catch (e) {
-            // Ignore error parsing
-          }
+        // --- 3. LOGIKA PAJAK & STNK OTOMATIS ---
+        final bool manualStnkAktif = data['stnk_aktif'] ?? true;
+        DateTime? pajakDate;
+        String pajakStr = "-";
+        final rawPajak = data['pajak'];
+
+        if (rawPajak is Timestamp) {
+          pajakDate = rawPajak.toDate();
+          pajakStr = DateFormat('dd MMMM yyyy', 'id_ID').format(pajakDate);
+        }
+
+        final bool isExpired = pajakDate != null && DateTime.now().isAfter(pajakDate);
+        final bool displayAktif = manualStnkAktif && !isExpired;
+
+        // --- 4. LOGIKA COUNTDOWN SERVIS ---
+        final double sisaKmML = double.tryParse(data['prediksi_rul']?.toString() ?? "0.0") ?? 0.0;
+        final rawDate = data['last_service_date'];
+        DateTime? lastServiceDate = (rawDate is Timestamp) ? rawDate.toDate() : null;
+        
+        // Data Tambahan Riwayat Servis
+        final int lastServiceOdo = int.tryParse(data['last_service_odo']?.toString() ?? "0") ?? 0;
+        final String serviceType = data['service_type'] ?? "-";
+        
+        int sisaHariBaru = 0;
+        if (lastServiceDate != null) {
+          int bulanTambahan = (data['jenis_kendaraan']?.toString().toLowerCase() == "mobil") ? 5 : 2;
+          DateTime targetDate = DateTime(lastServiceDate.year, lastServiceDate.month + bulanTambahan, lastServiceDate.day);
+          sisaHariBaru = targetDate.difference(DateTime.now()).inDays;
+        }
+
+        Color statusColor = const Color(0xFF5CB85C); 
+        if (sisaKmML <= 200 || sisaHariBaru <= 7) {
+          statusColor = Colors.red;
+        } else if (sisaKmML <= 1000 || sisaHariBaru <= 14) {
+          statusColor = Colors.orange;
         }
 
         return Scaffold(
@@ -80,120 +99,120 @@ class CarDetailScreen extends StatelessWidget {
             ),
           ),
           body: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 20),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // FOTO MOBIL
+                photoUrl != null
+                    ? Image.network(photoUrl, height: 180, fit: BoxFit.contain)
+                    : const Icon(Icons.directions_car, size: 100, color: Colors.grey),
+                
+                const SizedBox(height: 15),
+                Text(plat, style: TextStyle(fontWeight: FontWeight.w900, fontSize: 22, color: textColor)),
+                Text(namaKendaraan, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.grey)),
+                
+                const SizedBox(height: 25),
+                const Divider(),
+
+                // BOX COUNTDOWN
                 Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    border: Border.all(color: Colors.blue, width: 2),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(color: statusColor, borderRadius: BorderRadius.circular(12)),
                   child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      photoUrl != null
-                          ? Image.network(photoUrl,
-                              height: 150, fit: BoxFit.contain)
-                          : const Icon(Icons.directions_car,
-                              size: 80, color: Colors.grey),
-                      const SizedBox(height: 10),
-                      Text(plat,
-                          style: const TextStyle(
-                              fontWeight: FontWeight.w900,
-                              fontSize: 18,
-                              color: Colors.black)),
-                      Text(merk,
-                          style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: Colors.black)),
+                      const Text("COUNTDOWN SERVIS: ", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 8),
+                      Text("Sisa: ${sisaKmML.toStringAsFixed(1)} KM atau $sisaHariBaru hari lagi",
+                          style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900)),
                     ],
                   ),
                 ),
 
-                const SizedBox(height: 30),
+                const SizedBox(height: 25),
 
+                // INFORMASI DETAIL
                 _buildDetailRow("Tahun", tahun, textColor),
-                _buildDetailRow("Odometer", odo, textColor),
+                _buildDetailRow("Odometer", "${NumberFormat("#,###").format(odoNow)} KM", textColor),
                 _buildDetailRow("Pajak", pajakStr, textColor),
                 _buildDetailRow("Jenis transmisi", transmisi, textColor),
-                _buildDetailRow("Jenis bahan bakar", bbm, textColor),
-                _buildDetailRow("Nomor Rangka", rangka, textColor),
-                _buildDetailRow("Nomor Mesin", mesin, textColor),
+                _buildDetailRow("Jenis bahan bakar", bahanBakar, textColor),
+                _buildDetailRow("Nomor Rangka", nomorRangka, textColor),
+                _buildDetailRow("Nomor Mesin", nomorMesin, textColor),
 
-                // STATUS PAJAK
+                // STATUS PAJAK DAN STNK
                 Padding(
-                  padding: const EdgeInsets.only(bottom: 16),
+                  padding: const EdgeInsets.only(bottom: 18),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text("Pajak dan STNK",
-                          style:
-                              TextStyle(color: Colors.grey[600], fontSize: 15)),
+                      Text("Pajak dan STNK", style: TextStyle(color: Colors.grey[600], fontSize: 15)),
                       Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 4),
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                         decoration: BoxDecoration(
-                          color: isPajakActive
-                              ? const Color(0xFF5CB85C)
-                              : Colors.red,
-                          borderRadius: BorderRadius.circular(4),
+                          color: displayAktif ? const Color(0xFF8CC67E).withOpacity(0.2) : Colors.red.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(6),
                         ),
-                        child: Text(isPajakActive ? "Aktif" : "Non Aktif",
-                            style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold)),
-                      )
+                        child: Text(
+                          displayAktif ? "Aktif" : "Tidak Aktif",
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold, 
+                            color: displayAktif ? const Color(0xFF5CB85C) : Colors.red
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                 ),
 
-                const SizedBox(height: 10),
+                // --- BAGIAN RIWAYAT SERVIS (DITAMBAHKAN) ---
                 const Divider(),
                 const SizedBox(height: 10),
-
-                Text("Riwayat Service",
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    "Riwayat Service", 
                     style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                        decoration: TextDecoration.underline,
-                        color: textColor)),
-                const SizedBox(height: 16),
-                Center(
-                    child: Text("Belum ada riwayat service",
-                        style: TextStyle(color: Colors.grey[500]))),
+                      fontWeight: FontWeight.bold, 
+                      fontSize: 16, 
+                      color: textColor, 
+                      decoration: TextDecoration.underline
+                    )
+                  ),
+                ),
+                const SizedBox(height: 12),
+                lastServiceDate == null
+                    ? const Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text("Belum ada data servis")
+                      )
+                    : Column(
+                        children: [
+                          _buildDetailRow(
+                            DateFormat('dd MMM yyyy', 'id_ID').format(lastServiceDate), 
+                            serviceType, 
+                            textColor
+                          ),
+                          _buildDetailRow("Odo Terakhir Servis", "$lastServiceOdo KM", textColor),
+                        ],
+                      ),
+                // ------------------------------------------
 
-                const SizedBox(height: 40),
+                const SizedBox(height: 30),
 
-                // TOMBOL EDIT DATA (SEKARANG BERFUNGSI)
+                // TOMBOL EDIT
                 SizedBox(
                   width: double.infinity,
                   height: 50,
                   child: ElevatedButton(
                     style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF5CB85C),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8))),
+                      backgroundColor: const Color(0xFF8CC67E),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
                     onPressed: () {
-                      // BUKA HALAMAN EDIT
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => CarEditScreen(
-                            docId: docId,
-                            currentData: data,
-                          ),
-                        ),
-                      );
+                      Navigator.push(context, MaterialPageRoute(builder: (_) => CarEditScreen(docId: docId, currentData: data)));
                     },
-                    child: const Text("Edit Data",
-                        style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16)),
+                    child: const Text("Edit Data", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                   ),
                 ),
                 const SizedBox(height: 30),
@@ -207,18 +226,12 @@ class CarDetailScreen extends StatelessWidget {
 
   Widget _buildDetailRow(String label, String value, Color textColor) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 20),
+      padding: const EdgeInsets.only(bottom: 18),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(label, style: TextStyle(color: Colors.grey[600], fontSize: 15)),
-          Expanded(
-              child: Text(value,
-                  textAlign: TextAlign.right,
-                  style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 15,
-                      color: textColor))),
+          Text(value, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: textColor)),
         ],
       ),
     );

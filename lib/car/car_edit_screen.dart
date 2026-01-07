@@ -8,7 +8,6 @@ import 'package:intl/intl.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
 class CarEditScreen extends StatefulWidget {
-  // Kita butuh ID Dokumen untuk tahu mobil mana yang diedit
   final String docId;
   final Map<String, dynamic> currentData;
 
@@ -26,25 +25,33 @@ class _CarEditScreenState extends State<CarEditScreen> {
   final User? user = FirebaseAuth.instance.currentUser;
   bool _isLoading = false;
 
-  // Controllers
+  // --- CONTROLLER ---
   final _namaController = TextEditingController();
   final _platController = TextEditingController();
   final _tahunController = TextEditingController();
-  final _pajakController = TextEditingController();
   final _warnaController = TextEditingController();
   final _odoController = TextEditingController();
   final _rangkaController = TextEditingController();
   final _mesinController = TextEditingController();
+  
+  // Controller khusus untuk menampilkan tanggal
+  final _pajakController = TextEditingController();
+  final _serviceDateController = TextEditingController();
+  final _serviceOdoController = TextEditingController();
 
-  // Dropdown
-  String? _selectedTransmisi;
-  String? _selectedBbm;
-  final List<String> _transmisiOptions = ['Manual', 'Matic'];
-  final List<String> _bbmOptions = ['Bensin', 'Diesel'];
+  String _jenisKendaraan = "motor";
+  final List<String> _jenisOptions = ["motor", "mobil"];
+  
+  DateTime? _pajakDate;
+  DateTime? _serviceDate;
+  String _serviceType = "Ganti Oli";
+  final _serviceOptions = ['Ganti Oli', 'Servis Rutin', 'Tune Up', 'Lainnya'];
 
-  // Foto
+  final String _transmisiTetap = "Matic";
+  final String _bahanBakarTetap = "Bensin";
+
   Uint8List? _imageBytes;
-  String? _oldPhotoUrl; // Untuk menyimpan link foto lama
+  String? _oldPhotoUrl;
 
   @override
   void initState() {
@@ -54,130 +61,101 @@ class _CarEditScreenState extends State<CarEditScreen> {
   }
 
   void _loadInitialData() {
-    var data = widget.currentData;
+    final d = widget.currentData;
+    _jenisKendaraan = d['jenis_kendaraan'] ?? "motor";
+    _namaController.text = d['nama_kendaraan'] ?? "";
+    _platController.text = d['plat'] ?? "";
+    _tahunController.text = d['tahun']?.toString() ?? "";
+    _warnaController.text = d['warna'] ?? "";
+    _odoController.text = d['odo']?.toString() ?? "";
+    _rangkaController.text = d['rangka'] ?? "";
+    _mesinController.text = d['mesin'] ?? "";
 
-    _namaController.text = data['merk'] ?? "";
-    _platController.text = data['plat'] ?? "";
-    _tahunController.text = data['tahun'] ?? "";
-    _pajakController.text = data['pajak_date'] ?? "";
-    _warnaController.text = data['warna'] ?? "";
-    _odoController.text = data['odo'] ?? "";
-    _rangkaController.text = data['rangka'] ?? "";
-    _mesinController.text = data['mesin'] ?? "";
-
-    _selectedTransmisi = data['transmisi'];
-    _selectedBbm = data['bbm'];
-
-    // Pastikan nilai dropdown valid (ada di dalam list opsi)
-    if (!_transmisiOptions.contains(_selectedTransmisi)) {
-      _selectedTransmisi = null;
+    // Load Pajak & Format ke Controller
+    if (d['pajak'] is Timestamp) {
+      _pajakDate = (d['pajak'] as Timestamp).toDate();
+      _pajakController.text = DateFormat('dd MMMM yyyy', 'id_ID').format(_pajakDate!);
     }
-    if (!_bbmOptions.contains(_selectedBbm)) _selectedBbm = null;
 
-    _oldPhotoUrl = data['photo_url'];
+    // Load Service & Format ke Controller
+    _serviceOdoController.text = d['last_service_odo']?.toString() ?? "";
+    if (d['last_service_date'] is Timestamp) {
+      _serviceDate = (d['last_service_date'] as Timestamp).toDate();
+      _serviceDateController.text = DateFormat('dd MMMM yyyy', 'id_ID').format(_serviceDate!);
+    }
+
+    _serviceType = d['service_type'] ?? "Ganti Oli";
+    _oldPhotoUrl = d['photo_url'];
+  }
+
+  // --- FUNGSI PICK DATE YANG ROBUST ---
+  Future<void> _pickDate({
+    required DateTime? initial,
+    required Function(DateTime) onPicked,
+    required TextEditingController controller,
+    required DateTime lastDate,
+  }) async {
+    // Pastikan initial date tidak melampaui lastDate agar tidak crash
+    DateTime safeInitial = initial ?? DateTime.now();
+    if (safeInitial.isAfter(lastDate)) safeInitial = lastDate;
+
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: safeInitial,
+      firstDate: DateTime(2000),
+      lastDate: lastDate,
+    );
+
+    if (picked != null) {
+      setState(() {
+        onPicked(picked);
+        controller.text = DateFormat('dd MMMM yyyy', 'id_ID').format(picked);
+      });
+    }
   }
 
   Future<void> _pickImage() async {
-    final ImagePicker picker = ImagePicker();
-    final XFile? image = await picker.pickImage(source: ImageSource.gallery);
+    final image = await ImagePicker().pickImage(source: ImageSource.gallery);
     if (image != null) {
-      final Uint8List bytes = await image.readAsBytes();
-      setState(() {
-        _imageBytes = bytes;
-      });
-    }
-  }
-
-  Future<void> _pickDate() async {
-    DateTime? picked = await showDatePicker(
-      context: context,
-      initialDate: DateTime.now(),
-      firstDate: DateTime(2000),
-      lastDate: DateTime(2050),
-      builder: (context, child) => Theme(
-        data: Theme.of(context).copyWith(
-            colorScheme: const ColorScheme.light(
-                primary: Color(0xFF5CB85C),
-                onPrimary: Colors.white,
-                onSurface: Colors.black)),
-        child: child!,
-      ),
-    );
-    if (picked != null) {
-      setState(() {
-        _pajakController.text =
-            DateFormat('dd MMMM yyyy', 'id_ID').format(picked);
-      });
+      final bytes = await image.readAsBytes();
+      setState(() => _imageBytes = bytes);
     }
   }
 
   Future<String?> _uploadImage() async {
-    if (_imageBytes == null) {
-      return _oldPhotoUrl; // Kalau gak ganti foto, pakai yang lama
-    }
-    try {
-      final String uid = user!.uid;
-      final String fileName =
-          'car_${DateTime.now().millisecondsSinceEpoch}.jpg';
-      final Reference ref =
-          FirebaseStorage.instance.ref().child('car_photos/$uid/$fileName');
-      final SettableMetadata metadata =
-          SettableMetadata(contentType: 'image/jpeg');
-      await ref.putData(_imageBytes!, metadata);
-      return await ref.getDownloadURL();
-    } catch (e) {
-      throw Exception("Gagal upload foto: $e");
-    }
+    if (_imageBytes == null) return _oldPhotoUrl;
+    final ref = FirebaseStorage.instance.ref('car_photos/${user!.uid}/car_${DateTime.now().millisecondsSinceEpoch}.jpg');
+    await ref.putData(_imageBytes!, SettableMetadata(contentType: 'image/jpeg'));
+    return await ref.getDownloadURL();
   }
 
-  // --- FUNGSI UPDATE DATA ---
   Future<void> _updateCar() async {
-    if (_namaController.text.isEmpty ||
-        _platController.text.isEmpty ||
-        _pajakController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text("Data wajib tidak boleh kosong!"),
-          backgroundColor: Colors.red));
+    if (_namaController.text.isEmpty || _platController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Lengkapi data wajib")));
       return;
     }
-
     setState(() => _isLoading = true);
-
     try {
-      // 1. Upload Foto Baru (Jika ada)
-      String? photoUrl = await _uploadImage();
-
-      // 2. Update Firestore
-      // Perhatikan: Kita pakai .update(), bukan .add()
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user!.uid)
-          .collection('cars')
-          .doc(widget.docId) // Update dokumen yang spesifik
-          .update({
-        'merk': _namaController.text,
+      final photoUrl = await _uploadImage();
+      await FirebaseFirestore.instance.collection('users').doc(user!.uid).collection('cars').doc(widget.docId).update({
+        'nama_kendaraan': _namaController.text,
         'plat': _platController.text,
         'tahun': _tahunController.text,
-        'pajak_date': _pajakController.text,
         'warna': _warnaController.text,
-        'odo': _odoController.text,
-        'transmisi': _selectedTransmisi,
-        'bbm': _selectedBbm,
+        'odo': int.tryParse(_odoController.text) ?? 0,
         'rangka': _rangkaController.text,
         'mesin': _mesinController.text,
         'photo_url': photoUrl,
-        // created_at tidak perlu diupdate
+        'pajak': _pajakDate != null ? Timestamp.fromDate(_pajakDate!) : null,
+        'last_service_date': _serviceDate != null ? Timestamp.fromDate(_serviceDate!) : null,
+        'last_service_odo': int.tryParse(_serviceOdoController.text) ?? 0,
+        'service_type': _serviceType,
+        'transmisi': _transmisiTetap,
+        'bahan_bakar': _bahanBakarTetap,
       });
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text("Data berhasil diperbarui!"),
-            backgroundColor: Colors.green));
-        Navigator.pop(context); // Kembali ke Detail
-      }
+      if (mounted) Navigator.pop(context);
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Error: $e"), backgroundColor: Colors.red));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -185,104 +163,81 @@ class _CarEditScreenState extends State<CarEditScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Logic Preview Foto: Byte (Baru) > URL (Lama) > Icon (Kosong)
-    ImageProvider? finalImage;
-    if (_imageBytes != null) {
-      finalImage = MemoryImage(_imageBytes!);
-    } else if (_oldPhotoUrl != null) {
-      finalImage = NetworkImage(_oldPhotoUrl!);
-    }
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        title: const Text("Edit Kendaraan",
-            style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
-        centerTitle: true,
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, color: Color(0xFF5CB85C)),
-          onPressed: () => Navigator.pop(context),
-        ),
-      ),
+      appBar: AppBar(title: const Text("Edit Kendaraan")),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // FOTO
-            GestureDetector(
-              onTap: _pickImage,
-              child: Stack(
-                children: [
-                  Container(
-                    height: 150,
-                    width: double.infinity,
-                    decoration: BoxDecoration(
-                      color: Colors.grey[200],
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.grey),
-                      image: finalImage != null
-                          ? DecorationImage(
-                              image: finalImage, fit: BoxFit.cover)
-                          : null,
-                    ),
-                    child: finalImage == null
-                        ? const Icon(Icons.camera_alt,
-                            size: 50, color: Colors.grey)
-                        : null,
+            // IMAGE PICKER
+            Center(
+              child: GestureDetector(
+                onTap: _pickImage,
+                child: Container(
+                  height: 150, width: 150,
+                  decoration: BoxDecoration(
+                    border: Border.all(color: const Color(0xFF5CB85C)),
+                    borderRadius: BorderRadius.circular(15),
+                    image: _imageBytes != null
+                        ? DecorationImage(image: MemoryImage(_imageBytes!), fit: BoxFit.cover)
+                        : _oldPhotoUrl != null ? DecorationImage(image: NetworkImage(_oldPhotoUrl!), fit: BoxFit.cover) : null,
                   ),
-                  Positioned(
-                      bottom: 8,
-                      right: 8,
-                      child: Container(
-                          padding: const EdgeInsets.all(6),
-                          decoration: const BoxDecoration(
-                              color: Color(0xFF5CB85C), shape: BoxShape.circle),
-                          child: const Icon(Icons.edit,
-                              size: 16, color: Colors.white))),
-                ],
+                  child: _imageBytes == null && _oldPhotoUrl == null ? const Icon(Icons.camera_alt, size: 50) : null,
+                ),
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 25),
 
-            _buildInput("Nama Kendaraan", _namaController, "Wajib diisi"),
-            _buildInput("Plat Nomor", _platController, "Wajib diisi"),
-            _buildInput("Tahun Pembuatan", _tahunController, "Sesuai BPKB",
-                isNumber: true),
-            _buildInput("Pajak Kendaraan", _pajakController, "Sesuai STNK",
-                isReadOnly: true, onTap: _pickDate, icon: Icons.calendar_today),
-            _buildInput("Warna Kendaraan", _warnaController, "Sesuai STNK"),
-            _buildDropdown(
-                "Jenis Transmisi",
-                _selectedTransmisi,
-                _transmisiOptions,
-                (val) => setState(() => _selectedTransmisi = val)),
-            _buildDropdown("Jenis Bahan Bakar", _selectedBbm, _bbmOptions,
-                (val) => setState(() => _selectedBbm = val)),
-            _buildInput(
-                "Odometer Saat Ini", _odoController, "Update KM terakhir",
-                isNumber: true, suffixText: "KM"),
-            _buildInput("Nomor Rangka", _rangkaController, "Cek STNK"),
-            _buildInput("Nomor Mesin", _mesinController, "Cek STNK"),
+            _buildSectionTitle("Informasi Utama"),
+            _buildInput("Nama Kendaraan", _namaController),
+            _buildInput("Plat Nomor", _platController),
+            _buildInput("Odometer", _odoController, suffix: "KM", isNumber: true),
+
+            const Divider(height: 40),
+            _buildSectionTitle("Detail & Legalitas"),
+            _buildInput("Nomor Rangka", _rangkaController),
+            _buildInput("Nomor Mesin", _mesinController),
+
+            // --- PICKER PAJAK (Bisa Masa Depan sampai 2100) ---
+            GestureDetector(
+              onTap: () => _pickDate(
+                initial: _pajakDate,
+                onPicked: (d) => _pajakDate = d,
+                controller: _pajakController,
+                lastDate: DateTime(2100), 
+              ),
+              child: AbsorbPointer(
+                child: _buildInput("Tanggal Pajak", _pajakController, icon: Icons.calendar_today),
+              ),
+            ),
+
+            const Divider(height: 40),
+            _buildSectionTitle("Riwayat Servis"),
+            _buildInput("Odometer Servis Terakhir", _serviceOdoController, suffix: "KM", isNumber: true),
+            
+            // --- PICKER SERVIS (Hanya Masa Lalu) ---
+            GestureDetector(
+              onTap: () => _pickDate(
+                initial: _serviceDate,
+                onPicked: (d) => _serviceDate = d,
+                controller: _serviceDateController,
+                lastDate: DateTime.now(),
+              ),
+              child: AbsorbPointer(
+                child: _buildInput("Tanggal Servis Terakhir", _serviceDateController, icon: Icons.history),
+              ),
+            ),
 
             const SizedBox(height: 30),
             SizedBox(
-              width: double.infinity,
-              height: 50,
+              width: double.infinity, height: 50,
               child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF5CB85C),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8))),
+                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF5CB85C), foregroundColor: Colors.white),
                 onPressed: _isLoading ? null : _updateCar,
-                child: _isLoading
-                    ? const CircularProgressIndicator(color: Colors.white)
-                    : const Text("Simpan Perubahan",
-                        style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16)),
+                child: _isLoading ? const CircularProgressIndicator(color: Colors.white) : const Text("SIMPAN PERUBAHAN"),
               ),
             ),
           ],
@@ -291,55 +246,20 @@ class _CarEditScreenState extends State<CarEditScreen> {
     );
   }
 
-  Widget _buildInput(
-      String label, TextEditingController controller, String tooltip,
-      {bool isNumber = false,
-      bool isReadOnly = false,
-      VoidCallback? onTap,
-      IconData? icon,
-      String? suffixText}) {
+  Widget _buildSectionTitle(String title) => Padding(padding: const EdgeInsets.only(bottom: 12), child: Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF5CB85C))));
+  
+  Widget _buildInput(String label, TextEditingController c, {String? suffix, IconData? icon, bool isNumber = false}) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.only(bottom: 14),
       child: TextField(
-        controller: controller,
+        controller: c,
         keyboardType: isNumber ? TextInputType.number : TextInputType.text,
-        readOnly: isReadOnly,
-        onTap: onTap,
         decoration: InputDecoration(
           labelText: label,
-          prefixIcon: icon != null ? Icon(icon) : null,
-          suffixIcon: suffixText != null
-              ? Padding(
-                  padding: const EdgeInsets.all(14),
-                  child: Text(suffixText,
-                      style: const TextStyle(fontWeight: FontWeight.bold)))
-              : Tooltip(
-                  message: tooltip,
-                  triggerMode: TooltipTriggerMode.tap,
-                  child: const Icon(Icons.info_outline, color: Colors.grey)),
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-          filled: true,
-          fillColor: Colors.grey[50],
+          suffixText: suffix,
+          prefixIcon: icon != null ? Icon(icon, size: 20) : null,
+          border: const OutlineInputBorder(),
         ),
-      ),
-    );
-  }
-
-  Widget _buildDropdown(String label, String? val, List<String> opts,
-      Function(String?) onChanged) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
-      child: DropdownButtonFormField(
-        initialValue: val,
-        items: opts
-            .map((e) => DropdownMenuItem(value: e, child: Text(e)))
-            .toList(),
-        onChanged: onChanged,
-        decoration: InputDecoration(
-            labelText: label,
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-            filled: true,
-            fillColor: Colors.grey[50]),
       ),
     );
   }

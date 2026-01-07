@@ -1,36 +1,102 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_auth/firebase_auth.dart'; // Import Auth
-import 'package:flutter/foundation.dart';
+import 'package:firebase_auth/firebase_auth.dart'; 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart';
 
-// Import halaman-halaman penting
+import 'utils/notification_helper.dart';
 import 'login_screen.dart';
 import 'main_navigation.dart';
+import 'profile/profile_screen.dart';
 
-// 1. Variabel Global untuk Mengontrol Tema
 final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.light);
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  await NotificationHelper.init();
 
-  if (kIsWeb) {
-    await Firebase.initializeApp(
-      options: const FirebaseOptions(
-          // PASTIKAN DATA INI TETAP SESUAI DENGAN FIREBASE ANDA
-          apiKey: "AIzaSyBFGKtYHdRsTf_g_J_o9fMboiziQrXx7xs",
-          authDomain: "test-sipantau.firebaseapp.com",
-          projectId: "test-sipantau",
-          storageBucket: "test-sipantau.firebasestorage.app",
-          messagingSenderId: "313304355828",
-          appId: "1:313304355828:web:30efd9dc9ce5a4ba009fa1",
-          measurementId: "G-80JJR4DSY5"),
-    );
-  } else {
-    await Firebase.initializeApp();
-  }
+  const firebaseOptions = FirebaseOptions(
+    apiKey: "AIzaSyBFGKtYHdRsTf_g_J_o9fMboiziQrXx7xs",
+    authDomain: "test-sipantau.firebaseapp.com",
+    projectId: "test-sipantau",
+    storageBucket: "test-sipantau.firebasestorage.app",
+    messagingSenderId: "313304355828",
+    appId: "1:313304355828:web:30efd9dc9ce5a4ba009fa1",
+    measurementId: "G-80JJR4DSY5",
+  );
 
+  await Firebase.initializeApp(options: firebaseOptions);
   runApp(const SipantauApp());
+}
+
+Future<void> checkAllVehiclesMaintenance(String uid) async {
+  if (!notificationNotifier.value) return;
+
+  try {
+    final querySnapshot = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .collection('cars')
+        .get();
+
+    for (var doc in querySnapshot.docs) {
+      final data = doc.data();
+      final String nama = data['nama_kendaraan'] ?? "Kendaraan";
+      final String plat = data['plat'] ?? "-";
+      final String jenis = data['jenis_kendaraan'] ?? "motor";
+      
+      // --- LOGIKA NOTIFIKASI SERVIS ---
+      final double sisaKmRaw = double.tryParse(data['prediksi_rul']?.toString() ?? "0") ?? 0;
+      int sisaHariServis = 0;
+      final rawServiceDate = data['last_service_date'];
+      
+      if (rawServiceDate != null) {
+        DateTime lastDate = (rawServiceDate is Timestamp) ? rawServiceDate.toDate() : DateTime.now();
+        int bulanTambahan = (jenis.toLowerCase() == "mobil") ? 5 : 2;
+        
+        // PERBAIKAN: Menggunakan lastDate yang sudah didefinisikan
+        DateTime targetDate = DateTime(lastDate.year, lastDate.month + bulanTambahan, lastDate.day);
+        sisaHariServis = targetDate.difference(DateTime.now()).inDays;
+      }
+
+      bool triggerServis = (jenis.toLowerCase() == "mobil") 
+          ? (sisaKmRaw <= 1000 || sisaHariServis <= 7) 
+          : (sisaKmRaw <= 100 || sisaHariServis <= 7);
+
+      if (triggerServis) {
+        NotificationHelper.sendServiceReminder(
+          nama: nama,
+          plat: plat,
+          sisaKm: sisaKmRaw.round(), 
+          sisaHari: sisaHariServis,
+        );
+      }
+
+      // --- LOGIKA NOTIFIKASI PAJAK (H-7) ---
+      final rawPajak = data['pajak'];
+      if (rawPajak != null && rawPajak is Timestamp) {
+        DateTime pajakDate = rawPajak.toDate();
+        DateTime today = DateTime.now();
+        
+        DateTime todayPure = DateTime(today.year, today.month, today.day);
+        DateTime pajakPure = DateTime(pajakDate.year, pajakDate.month, pajakDate.day);
+        
+        int selisihHariPajak = pajakPure.difference(todayPure).inDays;
+        
+        if (selisihHariPajak == 7) {
+          NotificationHelper.sendTaxReminder(
+            nama: nama,
+            plat: plat,
+            tanggalPajak: DateFormat('dd MMMM yyyy', 'id_ID').format(pajakDate),
+          );
+        }
+      }
+    }
+  } catch (e) {
+    debugPrint("Gagal cek kendaraan: $e");
+  }
 }
 
 class SipantauApp extends StatelessWidget {
@@ -44,64 +110,34 @@ class SipantauApp extends StatelessWidget {
         return MaterialApp(
           title: 'SIPANTAU',
           debugShowCheckedModeBanner: false,
-
-          // Mengatur Mode saat ini (Light/Dark)
           themeMode: currentMode,
-
-          // --- TEMA TERANG (LIGHT) ---
           theme: ThemeData(
             brightness: Brightness.light,
             primaryColor: const Color(0xFF5CB85C),
-            colorScheme: ColorScheme.fromSeed(
-                seedColor: const Color(0xFF5CB85C),
-                brightness: Brightness.light),
+            colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF5CB85C), brightness: Brightness.light),
             useMaterial3: true,
             textTheme: GoogleFonts.poppinsTextTheme(),
             scaffoldBackgroundColor: const Color(0xFFF5F5F5),
-            appBarTheme: const AppBarTheme(
-              backgroundColor: Colors.transparent,
-              elevation: 0,
-              iconTheme: IconThemeData(color: Colors.black),
-            ),
           ),
-
-          // --- TEMA GELAP (DARK) ---
           darkTheme: ThemeData(
             brightness: Brightness.dark,
             primaryColor: const Color(0xFF5CB85C),
-            colorScheme: ColorScheme.fromSeed(
-                seedColor: const Color(0xFF5CB85C),
-                brightness: Brightness.dark),
+            colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF5CB85C), brightness: Brightness.dark),
             useMaterial3: true,
             textTheme: GoogleFonts.poppinsTextTheme(ThemeData.dark().textTheme),
             scaffoldBackgroundColor: const Color(0xFF121212),
-            appBarTheme: const AppBarTheme(
-              backgroundColor: Colors.transparent,
-              elevation: 0,
-              iconTheme: IconThemeData(color: Colors.white),
-            ),
             cardColor: const Color(0xFF1E1E1E),
           ),
-
-          // --- DISINI KUNCI PERBAIKANNYA ---
-          // Jangan langsung ke LoginScreen(), tapi cek status dulu pakai StreamBuilder
           home: StreamBuilder<User?>(
-            stream: FirebaseAuth.instance
-                .authStateChanges(), // Mendengarkan status login
+            stream: FirebaseAuth.instance.authStateChanges(),
             builder: (context, snapshot) {
-              // 1. Jika sedang loading (koneksi lambat), tampilkan loading bulat
               if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Scaffold(
-                  body: Center(child: CircularProgressIndicator()),
-                );
+                return const Scaffold(body: Center(child: CircularProgressIndicator()));
               }
-
-              // 2. Jika ada Data User (Artinya SUDAH LOGIN), langsung ke HOME
               if (snapshot.hasData) {
+                checkAllVehiclesMaintenance(snapshot.data!.uid);
                 return const MainNavigation();
               }
-
-              // 3. Jika Tidak ada data (BELUM LOGIN / LOGOUT), ke LOGIN SCREEN
               return const LoginScreen();
             },
           ),
@@ -110,5 +146,3 @@ class SipantauApp extends StatelessWidget {
     );
   }
 }
-
-// flutter run -d cherome --web-browser-flag "--disable-web-security" 
