@@ -168,7 +168,10 @@ class ServiceDashboardScreen extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Icon((data['type'] == 'motor') ? Icons.motorcycle : Icons.directions_car, color: Colors.red[700], size: 40),
-            Text(data['merk'] ?? "Unit", style: GoogleFonts.poppins(fontSize: 22, fontWeight: FontWeight.bold)),
+
+            // FIX: Menggunakan 'nama_kendaraan' agar tidak muncul "Unit"
+            Text(data['nama_kendaraan'] ?? "Tanpa Nama", style: GoogleFonts.poppins(fontSize: 22, fontWeight: FontWeight.bold)),
+
             Text(data['plat'] ?? "-", style: GoogleFonts.poppins(color: Colors.grey[700], fontWeight: FontWeight.w600)),
           ],
         ),

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_fonts/google_fonts.dart';
-// Import file dashboard yang baru dibuat tadi
+// Pastikan import ini sesuai dengan nama file dashboard kamu
 import 'service_dashboard_screen.dart';
 
 class ServiceScreen extends StatefulWidget {
@@ -108,7 +108,7 @@ class _ServiceScreenState extends State<ServiceScreen> {
               });
             },
             decoration: const InputDecoration(
-              hintText: "Cari Merk atau Plat",
+              hintText: "Cari Nama atau Plat",
               prefixIcon: Icon(Icons.search, color: Colors.grey),
               border: InputBorder.none,
               contentPadding: EdgeInsets.symmetric(vertical: 10),
@@ -132,12 +132,13 @@ class _ServiceScreenState extends State<ServiceScreen> {
             return const Center(child: Text("Data kendaraan tidak ditemukan."));
           }
 
-          // Filter data berdasarkan input di Search Bar
+          // Filter data berdasarkan input di Search Bar (MENGGUNAKAN NAMA KENDARAAN)
           var filteredDocs = snapshot.data!.docs.where((doc) {
             var data = doc.data() as Map<String, dynamic>;
-            String merk = (data['merk'] ?? "").toString().toLowerCase();
+            // FIX: Menggunakan 'nama_kendaraan' bukan 'merk'
+            String nama = (data['nama_kendaraan'] ?? "").toString().toLowerCase();
             String plat = (data['plat'] ?? "").toString().toLowerCase();
-            return merk.contains(_searchQuery) || plat.contains(_searchQuery);
+            return nama.contains(_searchQuery) || plat.contains(_searchQuery);
           }).toList();
 
           if (filteredDocs.isEmpty) {
@@ -183,9 +184,12 @@ class _ServiceScreenState extends State<ServiceScreen> {
               children: [
                 const Icon(Icons.directions_car, size: 28, color: Colors.red),
                 const SizedBox(height: 4),
+                // FIX: Typo 'Text(x' dihapus dan ganti field jadi 'nama_kendaraan'
                 Text(
-                  data['merk'] ?? 'Unit',
+                  data['nama_kendaraan'] ?? 'Tanpa Nama',
                   style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.bold),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
                 Text(
                   data['plat'] ?? '-',
@@ -228,12 +232,15 @@ class _ServiceScreenState extends State<ServiceScreen> {
           Expanded(
             flex: 1,
             child: data['photo_url'] != null
-                ? Image.network(
-              data['photo_url'],
-              height: 90,
-              fit: BoxFit.contain,
-              errorBuilder: (context, error, stackTrace) =>
-              const Icon(Icons.broken_image, size: 50),
+                ? ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Image.network(
+                data['photo_url'],
+                height: 90,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) =>
+                const Icon(Icons.broken_image, size: 50),
+              ),
             )
                 : const Icon(Icons.image, size: 80, color: Colors.grey),
           ),
