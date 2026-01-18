@@ -257,7 +257,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         const SizedBox(width: 12),
                         const Text(
-                          'Daftar dengan Google',
+                          'Masuk dengan Google',
                           style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,

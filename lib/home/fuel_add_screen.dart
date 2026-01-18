@@ -1,12 +1,17 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 
 class FuelAddScreen extends StatefulWidget {
-  final String carId; // Menerima Car ID
-  const FuelAddScreen({super.key, required this.carId});
+  final String carId;
+  final String carName;
+
+  const FuelAddScreen({super.key, required this.carId, required this.carName});
 
   @override
   State<FuelAddScreen> createState() => _FuelAddScreenState();
@@ -14,86 +19,128 @@ class FuelAddScreen extends StatefulWidget {
 
 class _FuelAddScreenState extends State<FuelAddScreen> {
   final _formKey = GlobalKey<FormState>();
-  
-  final _literController = TextEditingController();
-  final _priceController = TextEditingController();
+
+  // Controllers
   final _odoController = TextEditingController();
+  final _litersController = TextEditingController();
+  final _priceController = TextEditingController();
   final _dateController = TextEditingController();
-  
-  String? _selectedFuelType;
-  bool _isLoading = false;
+
+  String _selectedFuelType = 'Pertalite';
+  final List<String> _fuelTypes = [
+    'Pertalite',
+    'Pertamax',
+    'Pertamax Turbo',
+    'Solar',
+    'Dexlite',
+    'Pertamina Dex',
+    'Shell Super',
+    'Shell V-Power',
+    'Lainnya'
+  ];
+
   DateTime _selectedDate = DateTime.now();
-  final List<String> _fuelOptions = ['Pertalite', 'Pertamax', 'Pertamax Turbo', 'Solar', 'Dexlite'];
+  bool _isLoading = false;
+  File? _selectedImage;
 
   @override
   void initState() {
     super.initState();
-    _dateController.text = DateFormat('dd MMM yyyy').format(_selectedDate);
+    _dateController.text =
+        DateFormat('dd MMMM yyyy', 'id_ID').format(_selectedDate);
   }
 
-  Future<void> _saveData() async {
+  Future<void> _pickImageFromGallery() async {
+    final returnedImage = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 60,
+    );
+
+    if (returnedImage == null) return;
+
+    setState(() {
+      _selectedImage = File(returnedImage.path);
+    });
+  }
+
+  Future<void> _saveFuelLog() async {
+    // 1. Validasi Form (Input Teks)
     if (!_formKey.currentState!.validate()) return;
-    if (_selectedFuelType == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Pilih jenis bahan bakar")));
-      return;
+
+    // [BARU] 2. Validasi Gambar (Wajib Ada)
+    if (_selectedImage == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Wajib upload bukti nota/foto BBM!"), // Pesan Error
+          backgroundColor: Colors.red,
+        ),
+      );
+      return; // Stop proses, jangan lanjut ke bawah
     }
 
     setState(() => _isLoading = true);
+    final user = FirebaseAuth.instance.currentUser;
 
     try {
-      final user = FirebaseAuth.instance.currentUser;
-      
+      final int odo = int.parse(
+          _odoController.text.replaceAll(',', '').replaceAll('.', ''));
+      final double liters =
+          double.parse(_litersController.text.replaceAll(',', '.'));
+      final double totalPrice = double.parse(
+          _priceController.text.replaceAll(',', '').replaceAll('.', ''));
+
+      // Upload Gambar ke Firebase Storage
+      String? imageUrl;
+      final String fileName =
+          '${user!.uid}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final storageRef =
+          FirebaseStorage.instance.ref().child('fuel_receipts').child(fileName);
+
+      await storageRef.putFile(_selectedImage!);
+      imageUrl = await storageRef.getDownloadURL();
+
+      // Simpan ke Firestore
       await FirebaseFirestore.instance.collection('fuel_logs').add({
-        'userId': user?.uid,
-        'carId': widget.carId, // PENTING: Menyimpan ID Mobil
-        'liters': double.tryParse(_literController.text) ?? 0,
-        'totalPrice': double.tryParse(_priceController.text) ?? 0,
-        'odometer': int.tryParse(_odoController.text) ?? 0,
+        'userId': user.uid,
+        'carId': widget.carId,
+        'carName': widget.carName,
+        'odometer': odo,
+        'liters': liters,
+        'totalPrice': totalPrice,
         'fuelType': _selectedFuelType,
+        'notaUrl': imageUrl, // Pasti ada isinya sekarang
         'date': Timestamp.fromDate(_selectedDate),
         'created_at': FieldValue.serverTimestamp(),
       });
 
+      // Update Odometer Mobil
+      final carRef = FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('cars')
+          .doc(widget.carId);
+      final carSnapshot = await carRef.get();
+      if (carSnapshot.exists) {
+        final currentOdo = carSnapshot.data()?['odo'] ?? 0;
+        if (odo > currentOdo) {
+          await carRef.update({'odo': odo});
+        }
+      }
+
       if (mounted) {
-        Navigator.pop(context); 
+        Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Data tersimpan!"), backgroundColor: Color(0xFF5CB85C)),
+          const SnackBar(
+              content: Text("Data BBM Berhasil Disimpan"),
+              backgroundColor: Color(0xFF5CB85C)),
         );
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text("Gagal menyimpan: $e")));
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
-  }
-
-  // ... (Bagian widget _buildInput dan build() UI-nya sama persis seperti sebelumnya)
-  // Hanya pastikan class Definition di atas sudah pakai "widget.carId"
-  
-  Widget _buildInput(String label, TextEditingController controller, String hint, {bool isNumber = false, bool isReadOnly = false, VoidCallback? onTap}) {
-     return Padding(
-      padding: const EdgeInsets.only(bottom: 20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label, style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.black87)),
-          const SizedBox(height: 8),
-          TextFormField(
-            controller: controller,
-            readOnly: isReadOnly,
-            onTap: onTap,
-            keyboardType: isNumber ? TextInputType.number : TextInputType.text,
-            validator: (val) => val == null || val.isEmpty ? "Wajib diisi" : null,
-            decoration: InputDecoration(
-              hintText: hint,
-              filled: true,
-              fillColor: Colors.grey[100],
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-            ),
-          ),
-        ],
-      ),
-    );
   }
 
   @override
@@ -101,8 +148,11 @@ class _FuelAddScreenState extends State<FuelAddScreen> {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        title: Text("Isi BBM", style: GoogleFonts.poppins(color: Colors.black, fontWeight: FontWeight.bold)),
-        centerTitle: true,
+        title: Text("Isi BBM: ${widget.carName}",
+            style: GoogleFonts.poppins(
+                color: Colors.black,
+                fontWeight: FontWeight.bold,
+                fontSize: 16)),
         backgroundColor: Colors.white,
         elevation: 0,
         leading: IconButton(
@@ -111,43 +161,157 @@ class _FuelAddScreenState extends State<FuelAddScreen> {
         ),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(20),
         child: Form(
           key: _formKey,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-               Text("Jenis Bahan Bakar", style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                decoration: BoxDecoration(color: Colors.grey[100], borderRadius: BorderRadius.circular(12)),
-                child: DropdownButtonHideUnderline(
-                  child: DropdownButton<String>(
-                    value: _selectedFuelType,
-                    isExpanded: true,
-                    hint: const Text("Pilih jenis BBM"),
-                    items: _fuelOptions.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-                    onChanged: (val) => setState(() => _selectedFuelType = val),
+              _buildInput("Odometer Saat Ini", _odoController,
+                  isNumber: true, suffix: "KM"),
+              _buildInput("Jumlah Liter", _litersController,
+                  isNumber: true, suffix: "Liter"),
+              _buildInput("Total Harga", _priceController,
+                  isNumber: true, suffix: "Rp"),
+
+              Padding(
+                padding: const EdgeInsets.only(bottom: 20),
+                child: DropdownButtonFormField<String>(
+                  value: _selectedFuelType,
+                  decoration: InputDecoration(
+                    labelText: "Jenis BBM",
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12)),
                   ),
+                  items: _fuelTypes
+                      .map((e) => DropdownMenuItem(value: e, child: Text(e)))
+                      .toList(),
+                  onChanged: (val) => setState(() => _selectedFuelType = val!),
                 ),
               ),
-              const SizedBox(height: 20),
-              _buildInput("Total Biaya (Rp)", _priceController, "Contoh: 50000", isNumber: true),
-              _buildInput("Jumlah Liter", _literController, "Contoh: 3.5", isNumber: true),
-              _buildInput("Odometer", _odoController, "KM saat ini", isNumber: true),
-              _buildInput("Tanggal", _dateController, "", isReadOnly: true, onTap: () async {
-                 DateTime? picked = await showDatePicker(context: context, initialDate: _selectedDate, firstDate: DateTime(2020), lastDate: DateTime.now());
-                 if(picked != null) setState(() { _selectedDate = picked; _dateController.text = DateFormat('dd MMM yyyy').format(picked); });
-              }),
+
+              GestureDetector(
+                onTap: () async {
+                  final picked = await showDatePicker(
+                    context: context,
+                    initialDate: _selectedDate,
+                    firstDate: DateTime(2020),
+                    lastDate: DateTime.now(),
+                  );
+                  if (picked != null) {
+                    setState(() {
+                      _selectedDate = picked;
+                      _dateController.text =
+                          DateFormat('dd MMMM yyyy', 'id_ID').format(picked);
+                    });
+                  }
+                },
+                child: AbsorbPointer(
+                  child: _buildInput("Tanggal Pengisian", _dateController,
+                      suffixIcon: Icons.calendar_today),
+                ),
+              ),
+
+              // [UBAH UI] Menandakan Wajib
+              Row(
+                children: const [
+                  Text("Bukti Nota BBM ",
+                      style: TextStyle(fontWeight: FontWeight.bold)),
+                  Text("(Wajib)*",
+                      style: TextStyle(
+                          fontWeight: FontWeight.bold, color: Colors.red)),
+                ],
+              ),
+              const SizedBox(height: 10),
+
+              GestureDetector(
+                onTap: _pickImageFromGallery,
+                child: Container(
+                  height: 180,
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                      color: Colors.grey[100],
+                      borderRadius: BorderRadius.circular(12),
+                      // [UBAH UI] Border Merah jika belum ada gambar (biar notice)
+                      border: Border.all(
+                          color: _selectedImage == null
+                              ? Colors.redAccent.withOpacity(0.5)
+                              : Colors.grey[300]!,
+                          width: _selectedImage == null ? 1.5 : 1),
+                      image: _selectedImage != null
+                          ? DecorationImage(
+                              image: FileImage(_selectedImage!),
+                              fit: BoxFit.cover)
+                          : null),
+                  child: _selectedImage == null
+                      ? Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: const [
+                            Icon(Icons.add_photo_alternate,
+                                color: Color(0xFF5CB85C), size: 40),
+                            SizedBox(height: 8),
+                            Text("Ketuk untuk upload Nota",
+                                style: TextStyle(
+                                    color: Colors.grey,
+                                    fontWeight: FontWeight.bold)),
+                            Text("*Wajib diisi",
+                                style:
+                                    TextStyle(color: Colors.red, fontSize: 10)),
+                          ],
+                        )
+                      : null,
+                ),
+              ),
+
+              if (_selectedImage != null)
+                Center(
+                  child: TextButton.icon(
+                      onPressed: () => setState(() => _selectedImage = null),
+                      icon: const Icon(Icons.delete, color: Colors.red),
+                      label: const Text("Hapus Foto",
+                          style: TextStyle(color: Colors.red))),
+                ),
+
               const SizedBox(height: 30),
-              SizedBox(width: double.infinity, height: 50, child: ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF5CB85C), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-                onPressed: _isLoading ? null : _saveData,
-                child: _isLoading ? const CircularProgressIndicator(color: Colors.white) : const Text("Simpan", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-              ))
+
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF5CB85C),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                  ),
+                  onPressed: _isLoading ? null : _saveFuelLog,
+                  child: _isLoading
+                      ? const CircularProgressIndicator(color: Colors.white)
+                      : Text("Simpan Data",
+                          style: GoogleFonts.poppins(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white)),
+                ),
+              )
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInput(String label, TextEditingController controller,
+      {bool isNumber = false, String? suffix, IconData? suffixIcon}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 20),
+      child: TextFormField(
+        controller: controller,
+        keyboardType: isNumber ? TextInputType.number : TextInputType.text,
+        validator: (val) => val == null || val.isEmpty ? "Wajib diisi" : null,
+        decoration: InputDecoration(
+          labelText: label,
+          suffixText: suffix,
+          suffixIcon: suffixIcon != null ? Icon(suffixIcon) : null,
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
         ),
       ),
     );

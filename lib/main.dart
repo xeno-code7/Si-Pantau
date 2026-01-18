@@ -1,22 +1,28 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_auth/firebase_auth.dart'; 
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:intl/intl.dart';
+// [1] IMPORT WAJIB: Tambahkan ini untuk format tanggal Indonesia
+import 'package:intl/date_symbol_data_local.dart';
 
 import 'utils/notification_helper.dart';
 import 'login_screen.dart';
 import 'main_navigation.dart';
-import 'profile/profile_screen.dart';
+import 'profile/profile_screen.dart'; // Pastikan import ini ada untuk themeNotifier
 
+// Variabel Global Theme (Pastikan ini ada jika dipakai di file lain)
 final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.light);
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
+
+  // [2] Inisialisasi format tanggal Indonesia (Global)
+  await initializeDateFormatting('id_ID', null);
+
+  // Inisialisasi Notifikasi
   await NotificationHelper.init();
 
+  // Konfigurasi Firebase (Sesuaikan dengan data kamu)
   const firebaseOptions = FirebaseOptions(
     apiKey: "AIzaSyBFGKtYHdRsTf_g_J_o9fMboiziQrXx7xs",
     authDomain: "test-sipantau.firebaseapp.com",
@@ -28,76 +34,12 @@ void main() async {
   );
 
   await Firebase.initializeApp(options: firebaseOptions);
+
   runApp(const SipantauApp());
 }
 
-Future<void> checkAllVehiclesMaintenance(String uid) async {
-  if (!notificationNotifier.value) return;
-
-  try {
-    final querySnapshot = await FirebaseFirestore.instance
-        .collection('users')
-        .doc(uid)
-        .collection('cars')
-        .get();
-
-    for (var doc in querySnapshot.docs) {
-      final data = doc.data();
-      final String nama = data['nama_kendaraan'] ?? "Kendaraan";
-      final String plat = data['plat'] ?? "-";
-      final String jenis = data['jenis_kendaraan'] ?? "motor";
-      
-      // --- LOGIKA NOTIFIKASI SERVIS ---
-      final double sisaKmRaw = double.tryParse(data['prediksi_rul']?.toString() ?? "0") ?? 0;
-      int sisaHariServis = 0;
-      final rawServiceDate = data['last_service_date'];
-      
-      if (rawServiceDate != null) {
-        DateTime lastDate = (rawServiceDate is Timestamp) ? rawServiceDate.toDate() : DateTime.now();
-        int bulanTambahan = (jenis.toLowerCase() == "mobil") ? 5 : 2;
-        
-        // PERBAIKAN: Menggunakan lastDate yang sudah didefinisikan
-        DateTime targetDate = DateTime(lastDate.year, lastDate.month + bulanTambahan, lastDate.day);
-        sisaHariServis = targetDate.difference(DateTime.now()).inDays;
-      }
-
-      bool triggerServis = (jenis.toLowerCase() == "mobil") 
-          ? (sisaKmRaw <= 1000 || sisaHariServis <= 7) 
-          : (sisaKmRaw <= 100 || sisaHariServis <= 7);
-
-      if (triggerServis) {
-        NotificationHelper.sendServiceReminder(
-          nama: nama,
-          plat: plat,
-          sisaKm: sisaKmRaw.round(), 
-          sisaHari: sisaHariServis,
-        );
-      }
-
-      // --- LOGIKA NOTIFIKASI PAJAK (H-7) ---
-      final rawPajak = data['pajak'];
-      if (rawPajak != null && rawPajak is Timestamp) {
-        DateTime pajakDate = rawPajak.toDate();
-        DateTime today = DateTime.now();
-        
-        DateTime todayPure = DateTime(today.year, today.month, today.day);
-        DateTime pajakPure = DateTime(pajakDate.year, pajakDate.month, pajakDate.day);
-        
-        int selisihHariPajak = pajakPure.difference(todayPure).inDays;
-        
-        if (selisihHariPajak == 7) {
-          NotificationHelper.sendTaxReminder(
-            nama: nama,
-            plat: plat,
-            tanggalPajak: DateFormat('dd MMMM yyyy', 'id_ID').format(pajakDate),
-          );
-        }
-      }
-    }
-  } catch (e) {
-    debugPrint("Gagal cek kendaraan: $e");
-  }
-}
+// [CATATAN]: Fungsi checkAllVehiclesMaintenance SUDAH DIHAPUS
+// karena tugasnya sudah diambil alih oleh ReminderManager di HomeScreen.
 
 class SipantauApp extends StatelessWidget {
   const SipantauApp({super.key});
@@ -114,7 +56,9 @@ class SipantauApp extends StatelessWidget {
           theme: ThemeData(
             brightness: Brightness.light,
             primaryColor: const Color(0xFF5CB85C),
-            colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF5CB85C), brightness: Brightness.light),
+            colorScheme: ColorScheme.fromSeed(
+                seedColor: const Color(0xFF5CB85C),
+                brightness: Brightness.light),
             useMaterial3: true,
             textTheme: GoogleFonts.poppinsTextTheme(),
             scaffoldBackgroundColor: const Color(0xFFF5F5F5),
@@ -122,7 +66,9 @@ class SipantauApp extends StatelessWidget {
           darkTheme: ThemeData(
             brightness: Brightness.dark,
             primaryColor: const Color(0xFF5CB85C),
-            colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF5CB85C), brightness: Brightness.dark),
+            colorScheme: ColorScheme.fromSeed(
+                seedColor: const Color(0xFF5CB85C),
+                brightness: Brightness.dark),
             useMaterial3: true,
             textTheme: GoogleFonts.poppinsTextTheme(ThemeData.dark().textTheme),
             scaffoldBackgroundColor: const Color(0xFF121212),
@@ -132,10 +78,12 @@ class SipantauApp extends StatelessWidget {
             stream: FirebaseAuth.instance.authStateChanges(),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Scaffold(body: Center(child: CircularProgressIndicator()));
+                return const Scaffold(
+                    body: Center(child: CircularProgressIndicator()));
               }
               if (snapshot.hasData) {
-                checkAllVehiclesMaintenance(snapshot.data!.uid);
+                // [PENTING] Langsung ke MainNavigation
+                // Pengecekan notifikasi otomatis sudah dijalankan di dalam HomeScreen (via MainNavigation)
                 return const MainNavigation();
               }
               return const LoginScreen();
