@@ -1,107 +1,84 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'notification_helper.dart';
 
 class ReminderManager {
-  // Fungsi Utama: Cek Database & Pasang Notifikasi
+  /// Fungsi ini dipanggil di HomeScreen untuk menjadwalkan notifikasi
+  /// berdasarkan data kendaraan di Firestore.
   static Future<void> setupAutomatedReminders() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
     try {
-      // 1. Bersihkan jadwal lama biar tidak duplikat
+      // 1. Batalkan semua jadwal lama agar tidak duplikat saat data diupdate
       await NotificationHelper.cancelAll();
 
-      // 2. Ambil data mobil user
+      // 2. Ambil data kendaraan user
       final snapshot = await FirebaseFirestore.instance
           .collection('users')
           .doc(user.uid)
           .collection('cars')
           .get();
 
-      int notificationId = 0; // ID unik untuk setiap notifikasi
+      int notificationIdCounter = 100; // ID awal untuk notifikasi
 
       for (var doc in snapshot.docs) {
         final data = doc.data();
-        String namaMobil = data['nama_kendaraan'] ?? "Mobil";
-        String plat = data['plat'] ?? "";
+        final String nama = data['nama_kendaraan'] ?? "Kendaraan";
+        final String plat = data['plat'] ?? "";
+        final String jenis = data['jenis_kendaraan'] ?? "mobil";
 
-        // --- LOGIKA PAJAK ---
-        if (data['tgl_pajak'] != null) {
-          DateTime tglPajak = (data['tgl_pajak'] as Timestamp).toDate();
+        // --- A. JADWAL SERVIS BERDASARKAN WAKTU ---
+        // Karena kita tidak bisa tracking KM di background secara realtime tanpa service khusus,
+        // kita gunakan estimasi waktu (misal: Mobil 6 bulan, Motor 2 bulan dari servis terakhir).
+        if (data['last_service_date'] != null) {
+          DateTime lastService =
+              (data['last_service_date'] as Timestamp).toDate();
 
-          // H-30 (Peringatan Santai)
-          _scheduleIfFuture(
-            id: notificationId++,
-            title: "Pengingat Pajak 🗓️",
+          // Tentukan interval bulan
+          int intervalBulan = (jenis.toLowerCase() == "mobil") ? 6 : 2;
+
+          // Hitung tanggal servis berikutnya
+          DateTime nextServiceDate = DateTime(
+              lastService.year,
+              lastService.month + intervalBulan,
+              lastService.day,
+              9,
+              0 // Jam 9 Pagi
+              );
+
+          // Jadwalkan Notifikasi
+          await NotificationHelper.scheduleNotification(
+            id: notificationIdCounter++,
+            title: "Waktunya Servis: $nama",
             body:
-                "Pajak $namaMobil ($plat) jatuh tempo bulan depan. Siapkan dananya ya!",
-            targetDate: tglPajak.subtract(const Duration(days: 30)),
-          );
-
-          // H-7 (Peringatan Mendesak)
-          _scheduleIfFuture(
-            id: notificationId++,
-            title: "Pajak Segera Habis! 🚨",
-            body:
-                "Minggu depan pajak $namaMobil ($plat) habis! Segera bayar sekarang.",
-            targetDate: tglPajak.subtract(const Duration(days: 7)),
+                "Sudah $intervalBulan bulan sejak servis terakhir. Cek kondisi $plat Anda.",
+            scheduledDate: nextServiceDate,
           );
         }
 
-        // --- LOGIKA SERVIS (Asumsi ada field 'next_service_date') ---
-        // Jika di database kamu belum ada tanggal servis (karena pakainya KM),
-        // Logika H-14 ini butuh estimasi tanggal.
-        // Untuk sekarang kita cek jika ada field 'tgl_servis_berikutnya'
-        if (data['tgl_servis_berikutnya'] != null) {
-          DateTime tglServis =
-              (data['tgl_servis_berikutnya'] as Timestamp).toDate();
+        // --- B. JADWAL PAJAK (H-7) ---
+        if (data['pajak'] != null) {
+          DateTime pajakDate = (data['pajak'] as Timestamp).toDate();
 
-          // H-14 (Booking Bengkel)
-          _scheduleIfFuture(
-            id: notificationId++,
-            title: "Waktunya Servis 🛠️",
-            body:
-                "Jadwal servis $namaMobil ($plat) 2 minggu lagi. Yuk booking bengkel!",
-            targetDate: tglServis.subtract(const Duration(days: 14)),
-          );
+          // Set H-7 jam 8 Pagi
+          DateTime reminderDate = pajakDate.subtract(const Duration(days: 7));
+          reminderDate = DateTime(
+              reminderDate.year, reminderDate.month, reminderDate.day, 8, 0);
 
-          // H-7 (Mendesak)
-          _scheduleIfFuture(
-            id: notificationId++,
-            title: "Servis Minggu Depan! ⚠️",
+          await NotificationHelper.scheduleNotification(
+            id: notificationIdCounter++,
+            title: "Pajak Segera Habis!",
             body:
-                "Jangan lupa servis $namaMobil ($plat) minggu depan agar performa tetap prima.",
-            targetDate: tglServis.subtract(const Duration(days: 7)),
+                "Pajak $nama ($plat) akan habis pada ${pajakDate.day}/${pajakDate.month}/${pajakDate.year}. Siapkan dananya!",
+            scheduledDate: reminderDate,
           );
         }
       }
-
-      if (kDebugMode) {
-        print("✅ Reminder Otomatis Berhasil Dijadwalkan");
-      }
+      debugPrint("Reminder otomatis berhasil dijadwalkan ulang.");
     } catch (e) {
-      if (kDebugMode) {
-        print("❌ Gagal setup reminder: $e");
-      }
-    }
-  }
-
-  // Helper kecil untuk memastikan tanggal belum lewat
-  static void _scheduleIfFuture({
-    required int id,
-    required String title,
-    required String body,
-    required DateTime targetDate,
-  }) {
-    if (targetDate.isAfter(DateTime.now())) {
-      NotificationHelper.scheduleNotification(
-        id: id,
-        title: title,
-        body: body,
-        scheduledDate: targetDate,
-      );
+      debugPrint("Gagal setup reminder otomatis: $e");
     }
   }
 }

@@ -5,7 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 // [1] IMPORT UTILS
 import '../utils/reminder_manager.dart';
-import '../utils/notification_helper.dart'; // Pastikan ini di-import agar tombol lonceng jalan
+import '../home/notification_screen.dart';
 
 // --- IMPORT HALAMAN-HALAMAN ---
 import '../car/car_detail_screen.dart';
@@ -82,27 +82,13 @@ class _HomeScreenState extends State<HomeScreen> {
                       fontSize: 35,
                       letterSpacing: 1.5)),
               actions: [
-                // [3] TOMBOL LONCENG (SUDAH DIPERBAIKI)
                 IconButton(
                   icon: Icon(Icons.notifications_outlined, color: textColor),
                   onPressed: () {
-                    // Panggil Notifikasi Test
-                    NotificationHelper.sendServiceReminder(
-                      nama: "Test Lonceng Home",
-                      plat: "H 9999 TES",
-                      sisaKm: 500,
-                      sisaHari: 7,
-                    );
-
-                    // Tampilkan pesan konfirmasi di bawah
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content:
-                            Text("Test Notifikasi dikirim! Cek Status Bar HP."),
-                        backgroundColor: Color(0xFF5CB85C),
-                        behavior: SnackBarBehavior.floating,
-                      ),
-                    );
+                    Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (context) => const NotificationScreen()));
                   },
                 ),
                 GestureDetector(
@@ -300,70 +286,33 @@ class _HomeScreenState extends State<HomeScreen> {
 
                         // LOGIKA FILTER PENCARIAN
                         final allCars = carSnapshot.data!.docs;
-
                         final filteredCars = allCars.where((doc) {
                           final data = doc.data() as Map<String, dynamic>;
-                          final String plat =
+                          final plat =
                               (data['plat'] ?? "").toString().toLowerCase();
-                          final String nama = (data['nama_kendaraan'] ?? "")
-                              .toString()
-                              .toLowerCase();
-
-                          final String searchLower = _searchText.toLowerCase();
-
-                          return plat.contains(searchLower) ||
-                              nama.contains(searchLower);
+                          final merk =
+                              (data['merk'] ?? "").toString().toLowerCase();
+                          return plat.contains(_searchText.toLowerCase()) ||
+                              merk.contains(_searchText.toLowerCase());
                         }).toList();
 
                         if (filteredCars.isEmpty) {
                           return Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(Icons.search_off,
-                                    size: 60, color: Colors.grey[300]),
-                                const SizedBox(height: 10),
-                                Text("Kendaraan tidak ditemukan",
-                                    style: TextStyle(color: Colors.grey[500])),
-                              ],
-                            ),
-                          );
+                              child: Text(
+                                  "Tidak ditemukan kendaraan dengan plat '$_searchText'",
+                                  style: TextStyle(color: Colors.grey[500])));
                         }
 
-                        return SingleChildScrollView(
-                          physics: const BouncingScrollPhysics(),
-                          padding: const EdgeInsets.symmetric(horizontal: 20),
-                          child: Column(
-                            children: [
-                              const SizedBox(height: 4),
-                              GridView.builder(
-                                shrinkWrap: true,
-                                physics: const NeverScrollableScrollPhysics(),
-                                itemCount: filteredCars.length,
-                                gridDelegate:
-                                    const SliverGridDelegateWithFixedCrossAxisCount(
-                                  crossAxisCount: 2,
-                                  childAspectRatio: 0.75,
-                                  crossAxisSpacing: 16,
-                                  mainAxisSpacing: 16,
-                                ),
-                                itemBuilder: (context, index) {
-                                  final carData = filteredCars[index].data()
-                                      as Map<String, dynamic>;
-                                  final docId = filteredCars[index].id;
-
-                                  return _buildCarCard(
-                                    context,
-                                    carData,
-                                    docId,
-                                    textColor,
-                                    cardColor,
-                                  );
-                                },
-                              ),
-                              const SizedBox(height: 20),
-                            ],
-                          ),
+                        return ListView.builder(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 20, vertical: 10),
+                          itemCount: filteredCars.length,
+                          itemBuilder: (context, index) {
+                            final doc = filteredCars[index];
+                            final data = doc.data() as Map<String, dynamic>;
+                            return _buildCarCard(
+                                context, doc.id, data, textColor, cardColor);
+                          },
                         );
                       },
                     ),
@@ -375,94 +324,122 @@ class _HomeScreenState extends State<HomeScreen> {
         });
   }
 
-  // WIDGET HELPER MENU ITEM
-  Widget _buildMenuItem(IconData icon, String label, Color iconColor,
-      Color textColor, Color bgColor,
-      {VoidCallback? onTap}) {
+  // --- WIDGET ITEM MENU (KOTAK WARNA-WARNI) ---
+  Widget _buildMenuItem(IconData icon, String label, Color color,
+      Color textColor, Color cardColor,
+      {required VoidCallback onTap}) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
         width: 100,
         padding: const EdgeInsets.symmetric(vertical: 16),
         decoration: BoxDecoration(
-            color: bgColor, borderRadius: BorderRadius.circular(16)),
-        child: Column(children: [
-          Icon(icon, size: 35, color: iconColor),
-          const SizedBox(height: 8),
-          Text(label,
-              style: TextStyle(
-                  fontWeight: FontWeight.w600, fontSize: 12, color: textColor))
-        ]),
+          color: cardColor,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+                color: Colors.grey.withOpacity(0.05),
+                blurRadius: 10,
+                offset: const Offset(0, 4))
+          ],
+        ),
+        child: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                  color: color.withOpacity(0.1), shape: BoxShape.circle),
+              child: Icon(icon, color: color, size: 28),
+            ),
+            const SizedBox(height: 8),
+            Text(label,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: textColor)),
+          ],
+        ),
       ),
     );
   }
 
-  // WIDGET HELPER KARTU MOBIL
-  Widget _buildCarCard(BuildContext context, Map<String, dynamic> carData,
-      String docId, Color textColor, Color cardColor) {
-    String plat = carData['plat'] ?? "No Plat";
-    String merk = carData['nama_kendaraan'] ?? carData['merk'] ?? "No Merk";
-    String? photoUrl = carData['photo_url'];
-
-    return Container(
-      decoration: BoxDecoration(
-          color: cardColor, borderRadius: BorderRadius.circular(16)),
-      padding: const EdgeInsets.all(12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: Center(
-              child: photoUrl != null
-                  ? Container(
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(8),
-                        image: DecorationImage(
-                          image: NetworkImage(photoUrl),
-                          fit: BoxFit.cover,
-                        ),
-                      ),
-                    )
-                  : Icon(Icons.directions_car_filled,
-                      size: 60, color: Colors.grey[400]),
+  // --- WIDGET KARTU MOBIL ---
+  Widget _buildCarCard(BuildContext context, String docId,
+      Map<String, dynamic> data, Color textColor, Color cardColor) {
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+            context,
+            MaterialPageRoute(
+                builder: (context) =>
+                    CarDetailScreen(docId: docId, initialData: data)));
+      },
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 16),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: cardColor,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+                color: Colors.black.withOpacity(0.05),
+                blurRadius: 15,
+                offset: const Offset(0, 5))
+          ],
+        ),
+        child: Row(
+          children: [
+            // FOTO MOBIL
+            Container(
+              width: 80,
+              height: 80,
+              decoration: BoxDecoration(
+                color: Colors.grey[200],
+                borderRadius: BorderRadius.circular(15),
+                image: data['photo_url'] != null
+                    ? DecorationImage(
+                        image: NetworkImage(data['photo_url']),
+                        fit: BoxFit.cover)
+                    : null,
+              ),
+              child: data['photo_url'] == null
+                  ? Icon(Icons.directions_car,
+                      size: 40, color: Colors.grey[400])
+                  : null,
             ),
-          ),
-          const SizedBox(height: 8),
-          Text(plat,
-              style: TextStyle(
-                  fontWeight: FontWeight.bold, fontSize: 16, color: textColor),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis),
-          Text(merk,
-              style: TextStyle(color: Colors.grey[600], fontSize: 12),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis),
-          const SizedBox(height: 8),
-          Align(
-            alignment: Alignment.centerRight,
-            child: GestureDetector(
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => CarDetailScreen(
-                      docId: docId,
-                      initialData: carData,
-                    ),
+            const SizedBox(width: 16),
+
+            // INFO MOBIL
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(data['nama_kendaraan'] ?? "Tanpa Nama",
+                      style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: textColor)),
+                  const SizedBox(height: 4),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                        color: Colors.grey.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(6)),
+                    child: Text(data['plat'] ?? "-",
+                        style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: textColor.withOpacity(0.7))),
                   ),
-                );
-              },
-              child: Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                    color: const Color(0xFF5CB85C),
-                    borderRadius: BorderRadius.circular(8)),
-                child: const Icon(Icons.arrow_forward,
-                    color: Colors.white, size: 16),
+                ],
               ),
             ),
-          )
-        ],
+            Icon(Icons.arrow_forward_ios,
+                size: 16, color: Colors.grey.withOpacity(0.5)),
+          ],
+        ),
       ),
     );
   }

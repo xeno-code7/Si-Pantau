@@ -1,7 +1,5 @@
-import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-
-import 'package:timezone/data/latest_all.dart' as tz;
+import 'package:flutter/material.dart';
 import 'package:timezone/timezone.dart' as tz;
 
 class NotificationHelper {
@@ -9,130 +7,98 @@ class NotificationHelper {
       FlutterLocalNotificationsPlugin();
 
   static Future<void> init() async {
-    tz.initializeTimeZones();
-    try {
-      tz.setLocalLocation(tz.getLocation('Asia/Jakarta'));
-    } catch (e) {
-      debugPrint("Gagal set lokasi timezone: $e");
-    }
-
-    const AndroidInitializationSettings androidSettings =
+    // 1. Inisialisasi Ikon (Wajib pakai ic_launcher agar tidak error resource)
+    const AndroidInitializationSettings initializationSettingsAndroid =
         AndroidInitializationSettings('@mipmap/ic_launcher');
 
-    const DarwinInitializationSettings iosSettings =
-        DarwinInitializationSettings(
-      requestAlertPermission: true,
-      requestBadgePermission: true,
-      requestSoundPermission: true,
+    const InitializationSettings initializationSettings =
+        InitializationSettings(
+      android: initializationSettingsAndroid,
     );
 
-    const InitializationSettings settings = InitializationSettings(
-      android: androidSettings,
-      iOS: iosSettings,
-    );
+    await _notificationsPlugin.initialize(initializationSettings);
 
-    await _notificationsPlugin.initialize(settings);
-  }
+    // 2. BUAT CHANNEL (Wajib untuk Android 8.0 ke atas agar notifikasi muncul)
 
-  // MANUAL SERVIS
-  static Future<void> sendServiceReminder({
-    required String nama,
-    required String plat,
-    required int sisaKm,
-    required int sisaHari,
-  }) async {
-    const AndroidNotificationDetails androidDetails =
-        AndroidNotificationDetails(
-      'channel_service_id',
-      'Pengingat Servis',
-      channelDescription: 'Notifikasi untuk jadwal servis kendaraan',
+    // --- Channel untuk Servis ---
+    const AndroidNotificationChannel serviceChannel =
+        AndroidNotificationChannel(
+      'sipantau_service_channel',
+      'Notifikasi Servis SIPANTAU',
+      description: 'Saluran untuk pengingat servis kendaraan AI',
       importance: Importance.max,
-      priority: Priority.high,
-      icon: '@mipmap/ic_launcher',
-      color: Color(0xFF5CB85C),
+      playSound: true,
+      enableVibration: true,
     );
 
-    const NotificationDetails platformDetails =
-        NotificationDetails(android: androidDetails);
-
-    await _notificationsPlugin.show(
-      0,
-      'Waktunya Servis! 🛠️',
-      '$nama ($plat) sisa $sisaKm KM lagi atau $sisaHari hari lagi.',
-      platformDetails,
-    );
-  }
-
-  // MANUAL PAJAK
-  static Future<void> sendTaxReminder({
-    required String nama,
-    required String plat,
-    required String tanggalPajak,
-  }) async {
-    const AndroidNotificationDetails androidDetails =
-        AndroidNotificationDetails(
-      'channel_tax_id',
-      'Pengingat Pajak',
-      channelDescription: 'Notifikasi untuk jatuh tempo pajak kendaraan',
+    // --- Channel untuk Pajak (Baru) ---
+    const AndroidNotificationChannel taxChannel = AndroidNotificationChannel(
+      'sipantau_tax_channel',
+      'Notifikasi Pajak SIPANTAU',
+      description: 'Saluran untuk pengingat jatuh tempo pajak kendaraan',
       importance: Importance.max,
-      priority: Priority.high,
-      icon: '@mipmap/ic_launcher',
-      color: Colors.orange,
+      playSound: true,
+      enableVibration: true,
     );
 
-    const NotificationDetails platformDetails =
-        NotificationDetails(android: androidDetails);
+    final androidPlugin =
+        _notificationsPlugin.resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>();
 
-    await _notificationsPlugin.show(
-      1,
-      'Pajak Segera Habis! 📄',
-      'Pajak $nama ($plat) jatuh tempo pada $tanggalPajak. Segera perpanjang STNK!',
-      platformDetails,
-    );
+    if (androidPlugin != null) {
+      // Daftarkan kedua channel ke sistem Android
+      await androidPlugin.createNotificationChannel(serviceChannel);
+      await androidPlugin.createNotificationChannel(taxChannel);
+
+      // Minta izin pop-up ke user (Android 13+)
+      await androidPlugin.requestNotificationsPermission();
+    }
   }
 
-  // OTOMATIS JADWAL
+  // --- LOGIC PENJADWALAN (AGAR MUNCUL SAAT APLIKASI DITUTUP) ---
   static Future<void> scheduleNotification({
     required int id,
     required String title,
     required String body,
     required DateTime scheduledDate,
   }) async {
-    final scheduledTime = tz.TZDateTime(
-      tz.local,
-      scheduledDate.year,
-      scheduledDate.month,
-      scheduledDate.day,
-      8,
-      0,
-    );
+    try {
+      // Konversi waktu ke Zona Waktu Lokal HP
+      final tz.TZDateTime now = tz.TZDateTime.now(tz.local);
+      tz.TZDateTime scheduleTime = tz.TZDateTime.from(scheduledDate, tz.local);
 
-    if (scheduledTime.isBefore(tz.TZDateTime.now(tz.local))) {
-      return;
-    }
+      // Jika waktu sudah lewat, jangan dijadwalkan (atau jadwalkan untuk tahun depan jika perlu)
+      if (scheduleTime.isBefore(now)) {
+        debugPrint("Waktu jadwal sudah lewat, notifikasi tidak dijadwalkan.");
+        return;
+      }
 
-    await _notificationsPlugin.zonedSchedule(
-      id,
-      title,
-      body,
-      scheduledTime,
-      const NotificationDetails(
-        android: AndroidNotificationDetails(
-          'channel_reminder_id',
-          'Pengingat Otomatis',
-          channelDescription: 'Notifikasi jadwal otomatis',
-          importance: Importance.max,
-          priority: Priority.high,
-          icon: '@mipmap/ic_launcher',
-          color: Color(0xFF5CB85C),
+      await _notificationsPlugin.zonedSchedule(
+        id,
+        title,
+        body,
+        scheduleTime,
+        const NotificationDetails(
+          android: AndroidNotificationDetails(
+            'sipantau_service_channel',
+            'Notifikasi Terjadwal',
+            channelDescription: 'Notifikasi yang berjalan di background',
+            importance: Importance.max,
+            priority: Priority.high,
+            icon: '@mipmap/ic_launcher',
+          ),
         ),
-      ),
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-      // Hapus parameter uiLocalNotificationDateInterpretation
-      // Karena default-nya sudah absoluteTime
-    );
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
+      );
+      debugPrint("Notifikasi Berhasil Dijadwalkan: $title pada $scheduleTime");
+    } catch (e) {
+      debugPrint("Gagal Menjadwalkan Notifikasi: $e");
+    }
   }
 
+  // Fungsi untuk membatalkan semua jadwal (misal saat logout)
   static Future<void> cancelAll() async {
     await _notificationsPlugin.cancelAll();
   }

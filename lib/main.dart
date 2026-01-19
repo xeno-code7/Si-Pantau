@@ -1,9 +1,13 @@
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:timezone/data/latest_all.dart' as tz;
+import 'package:timezone/timezone.dart' as tz;
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import 'utils/notification_helper.dart';
 import 'login_screen.dart';
@@ -18,6 +22,7 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   await initializeDateFormatting('id_ID', null);
+  tz.initializeTimeZones(); // Inisialisasi data waktu untuk penjadwalan
   await NotificationHelper.init();
 
   if (kIsWeb) {
@@ -36,6 +41,16 @@ void main() async {
     // Konfigurasi untuk Android/iOS (Otomatis baca google-services.json)
     await Firebase.initializeApp();
   }
+
+  // --- STANDAR INDUSTRI: CRASH REPORTING ---
+  // Menangkap error Flutter (UI)
+  FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
+
+  // Menangkap error Asynchronous (Logic background)
+  ui.PlatformDispatcher.instance.onError = (error, stack) {
+    FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+    return true;
+  };
 
   runApp(const SipantauApp());
 }

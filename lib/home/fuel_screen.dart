@@ -172,12 +172,13 @@ class _FuelScreenState extends State<FuelScreen> {
                         "${totalLiters.toStringAsFixed(1)} L",
                         Icons.water_drop),
                     Container(width: 1, height: 40, color: Colors.white30),
-                    _buildStatItem("Frekuensi", "$fillCount Kali", Icons.loop),
+                    _buildStatItem(
+                        "Frekuensi", "$fillCount Kali", Icons.history),
                   ],
                 ),
               ),
 
-              // LIST DATA
+              // DAFTAR RIWAYAT
               Expanded(
                 child: ListView.builder(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -186,7 +187,6 @@ class _FuelScreenState extends State<FuelScreen> {
                     var data =
                         filteredDocs[index].data() as Map<String, dynamic>;
                     DateTime date = (data['date'] as Timestamp).toDate();
-                    String? notaUrl = data['notaUrl'];
 
                     return Container(
                       margin: const EdgeInsets.only(bottom: 12),
@@ -197,53 +197,30 @@ class _FuelScreenState extends State<FuelScreen> {
                           BoxShadow(
                               color: Colors.grey.withOpacity(0.05),
                               blurRadius: 10,
-                              offset: const Offset(0, 4))
+                              offset: const Offset(0, 2))
                         ],
                       ),
                       child: ListTile(
-                        onTap: notaUrl != null
-                            ? () => _showNotaDialog(notaUrl)
-                            : null,
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 20, vertical: 8),
                         leading: Container(
                           padding: const EdgeInsets.all(10),
                           decoration: BoxDecoration(
                               color: const Color(0xFF5CB85C).withOpacity(0.1),
                               shape: BoxShape.circle),
                           child: const Icon(Icons.local_gas_station,
-                              color: Color(0xFF5CB85C), size: 20),
+                              color: Color(0xFF5CB85C)),
                         ),
-                        title: Text(data['fuelType'] ?? 'Bahan Bakar',
-                            style: GoogleFonts.poppins(
-                                fontWeight: FontWeight.bold)),
-                        subtitle: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                                "${DateFormat('dd MMM yyyy').format(date)} • ${data['liters']} L",
-                                style: GoogleFonts.poppins(
-                                    fontSize: 12, color: Colors.grey)),
-                            if (notaUrl != null)
-                              Padding(
-                                padding: const EdgeInsets.only(top: 4),
-                                child: Row(
-                                  children: const [
-                                    Icon(Icons.image,
-                                        size: 12, color: Colors.blue),
-                                    SizedBox(width: 4),
-                                    Text("Lihat Foto Nota",
-                                        style: TextStyle(
-                                            fontSize: 10,
-                                            color: Colors.blue,
-                                            fontWeight: FontWeight.bold))
-                                  ],
-                                ),
-                              )
-                          ],
-                        ),
-                        trailing: Text(
+                        title: Text(
                             currencyFormatter.format(data['totalPrice']),
                             style: GoogleFonts.poppins(
-                                fontWeight: FontWeight.bold)),
+                                fontWeight: FontWeight.bold, fontSize: 16)),
+                        subtitle: Text(
+                            "${DateFormat('dd MMM yyyy').format(date)} • ${data['liters']} Liter",
+                            style: GoogleFonts.poppins(
+                                fontSize: 12, color: Colors.grey)),
+                        trailing: const Icon(Icons.arrow_forward_ios,
+                            size: 14, color: Colors.grey),
                       ),
                     );
                   },
@@ -253,22 +230,22 @@ class _FuelScreenState extends State<FuelScreen> {
           );
         },
       ),
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: FloatingActionButton(
         backgroundColor: const Color(0xFF5CB85C),
-        onPressed: () => Navigator.push(
+        onPressed: () {
+          Navigator.push(
             context,
             MaterialPageRoute(
-                builder: (context) => FuelAddScreen(
-                    carId: widget.carId, carName: widget.carName))),
-        icon: const Icon(Icons.add, color: Colors.white),
-        label: Text("Catat Baru",
-            style: GoogleFonts.poppins(
-                color: Colors.white, fontWeight: FontWeight.w600)),
+              builder: (context) =>
+                  FuelAddScreen(carId: widget.carId, carName: widget.carName),
+            ),
+          );
+        },
+        child: const Icon(Icons.add, color: Colors.white),
       ),
     );
   }
 
-  // WIDGET KHUSUS STATISTIK (Jangan dihapus)
   Widget _buildStatItem(String label, String value, IconData icon) {
     return Column(
       children: [
@@ -278,27 +255,11 @@ class _FuelScreenState extends State<FuelScreen> {
             style: GoogleFonts.poppins(
                 color: Colors.white,
                 fontWeight: FontWeight.bold,
-                fontSize: 13)),
+                fontSize: 14)),
         Text(label,
             style: GoogleFonts.poppins(color: Colors.white70, fontSize: 10)),
       ],
     );
-  }
-
-  void _showNotaDialog(String url) {
-    showDialog(
-        context: context,
-        builder: (context) => Dialog(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Image.network(url),
-                  TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: const Text("Tutup"))
-                ],
-              ),
-            ));
   }
 
   Widget _buildEmptyState({bool isFiltered = false}) {
@@ -311,12 +272,28 @@ class _FuelScreenState extends State<FuelScreen> {
           const SizedBox(height: 16),
           Text(
               isFiltered
-                  ? "Tidak ada data di tanggal ini"
-                  : "Belum ada data BBM",
+                  ? "Tidak ada data pada tanggal ini"
+                  : "Belum ada riwayat BBM",
               style: GoogleFonts.poppins(color: Colors.grey)),
-          if (isFiltered)
-            TextButton(
-                onPressed: _resetDateFilter, child: const Text("Reset Tanggal"))
+          if (!isFiltered) ...[
+            const SizedBox(height: 20),
+            ElevatedButton.icon(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => FuelAddScreen(
+                        carId: widget.carId, carName: widget.carName),
+                  ),
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF5CB85C),
+                  foregroundColor: Colors.white),
+              icon: const Icon(Icons.add),
+              label: const Text("Catat BBM"),
+            )
+          ]
         ],
       ),
     );

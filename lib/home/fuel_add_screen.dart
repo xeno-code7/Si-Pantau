@@ -6,6 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 class FuelAddScreen extends StatefulWidget {
   final String carId;
@@ -135,9 +136,13 @@ class _FuelAddScreenState extends State<FuelAddScreen> {
               backgroundColor: Color(0xFF5CB85C)),
         );
       }
-    } catch (e) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text("Gagal menyimpan: $e")));
+    } catch (e, stackTrace) {
+      FirebaseCrashlytics.instance
+          .recordError(e, stackTrace, reason: 'Gagal Simpan BBM');
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text("Gagal menyimpan: $e")));
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
