@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
+import 'package:sipantau/utils/rul_helper.dart';
 
 class ServiceDashboardScreen extends StatelessWidget {
   final String carId;
@@ -33,42 +34,54 @@ class ServiceDashboardScreen extends StatelessWidget {
 
           var data = snapshot.data!.data() as Map<String, dynamic>;
 
-          // --- 1. LOGIKA IDENTIFIKASI KENDARAAN ---
+          // --- 1. AMBIL DATA DASAR ---
           String type = (data['type'] ?? 'mobil').toString().toLowerCase();
-
-          // --- 2. LOGIKA ESTIMASI WAKTU (BULAN) ---
+          int currentOdo = data['odo'] ?? 0; // Disinkronkan dengan journey_screen
+          int lastServiceOdo = data['last_service_odo'] ?? 0;
           DateTime lastServiceDate = (data['last_service_date'] as Timestamp).toDate();
-          int intervalMonth = (type == 'motor') ? 2 : 6;
-          DateTime nextServiceDate = DateTime(lastServiceDate.year, lastServiceDate.month + intervalMonth, lastServiceDate.day);
-          bool isTimeOverdue = DateTime.now().isAfter(nextServiceDate);
 
-          // --- 3. LOGIKA SARAN BERDASARKAN ODOMETER (KM) ---
-          int currentOdo = data['odometer'] ?? 0; // Odometer saat ini (dari input journey/fuel)
-          int lastServiceOdo = data['last_service_odo'] ?? 0; // Odometer saat servis terakhir
-          int odoDiff = currentOdo - lastServiceOdo;
+          // --- 2. PANGGIL LOGIKA DARI RUL_HELPER ---
+          // Menggunakan logic terpusat agar konsisten
+          RulResult result = RulHelper.hitungRul(
+            jenisKendaraan: type,
+            odoSekarang: currentOdo,
+            odoTerakhirServis: lastServiceOdo,
+            tanggalTerakhirServis: lastServiceDate,
+          );
 
-          // Ambang batas ganti oli (Motor: 3000km, Mobil: 10000km)
-          int oilThreshold = (type == 'motor') ? 3000 : 10000;
-          bool isOdoOverdue = odoDiff >= oilThreshold;
+          // --- 3. MAPPING HASIL HELPER KE UI ---
+          Color statusColor;
+          String saranUtama;
+          List<String> checkList;
 
-          // --- 4. PENENTUAN STATUS & SARAN ---
-          String statusBadge = "Jadwal Aman";
-          Color statusColor = Colors.green;
-          String saranUtama = "Perawatan Rutin";
-          List<String> checkList = [];
-
-          if (isTimeOverdue || isOdoOverdue) {
-            statusBadge = isTimeOverdue ? "Lewat Waktu" : "Limit KM Tercapai";
+          // Penentuan UI berdasarkan status dari RulHelper
+          if (result.status == "HARUS SERVIS") {
             statusColor = Colors.red;
-            saranUtama = "WAKTUNYA GANTI OLI"; // Saran berubah jadi Ganti Oli jika limit tercapai
+            saranUtama = "WAKTUNYA GANTI OLI";
             checkList = (type == 'motor')
                 ? ["Ganti Oli Mesin", "Cek Rantai", "Cek Rem"]
                 : ["Ganti Oli Mesin", "Filter Oli", "Cek General"];
+          } else if (result.status == "MENDEKATI SERVIS") {
+            statusColor = Colors.orange;
+            saranUtama = "PERSIAPKAN SERVIS";
+            checkList = (type == 'motor')
+                ? ["Cek Rem", "Cek Busi"]
+                : ["Cek Air Radiator", "Cek Aki"];
           } else {
+            statusColor = Colors.green;
+            saranUtama = "KENDARAAN PRIMA";
             checkList = (type == 'motor')
                 ? ["Cek Tekanan Ban", "Pembersihan"]
                 : ["Cek Air Radiator", "Cek Wiper"];
           }
+
+          // Hitung estimasi tanggal untuk tampilan (tetap 2 bln motor / 6 bln mobil)
+          int intervalMonth = (type == 'motor') ? 2 : 6;
+          DateTime nextServiceDate = DateTime(lastServiceDate.year, lastServiceDate.month + intervalMonth, lastServiceDate.day);
+
+          // Hitung pemakaian KM untuk ditampilkan di card
+          int odoDiff = currentOdo - lastServiceOdo;
+          int limitKm = (type == 'motor') ? 3000 : 8000; // Sesuai RulHelper
 
           return SingleChildScrollView(
             padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -78,8 +91,18 @@ class ServiceDashboardScreen extends StatelessWidget {
                 _buildHeader(data),
                 const SizedBox(height: 24),
 
-                // --- BAGIAN ESTIMASI & SARAN ---
-                _buildEstimationCard(nextServiceDate, statusBadge, statusColor, saranUtama, checkList, odoDiff, oilThreshold),
+                // Menampilkan status sisa hari/KM dari RulHelper
+                _buildEstimationCard(
+                    nextServiceDate,
+                    result.status,
+                    statusColor,
+                    saranUtama,
+                    checkList,
+                    odoDiff,
+                    limitKm,
+                    result.sisaKm,
+                    result.sisaHari
+                ),
 
                 const SizedBox(height: 20),
                 _buildRiwayatCard(data, lastServiceDate, lastServiceOdo),
@@ -94,8 +117,8 @@ class ServiceDashboardScreen extends StatelessWidget {
     );
   }
 
-  // --- UI KARTU ESTIMASI & SARAN ---
-  Widget _buildEstimationCard(DateTime nextDate, String badge, Color color, String saran, List<String> tags, int diff, int limit) {
+  // --- UI KARTU ESTIMASI (DIPERBARUI) ---
+  Widget _buildEstimationCard(DateTime nextDate, String badge, Color color, String saran, List<String> tags, int diff, int limit, int sisaKm, int sisaHari) {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: _cardDecoration(),
@@ -122,6 +145,7 @@ class ServiceDashboardScreen extends StatelessWidget {
               children: [
                 _buildRowDetail("Tgl Estimasi", ": ${DateFormat('dd MMMM yyyy').format(nextDate)}"),
                 _buildRowDetail("Pemakaian", ": $diff / $limit KM"),
+                _buildRowDetail("Sisa Umur", ": ${sisaKm > 0 ? sisaKm : 0} KM / ${sisaHari > 0 ? sisaHari : 0} Hari"),
                 const SizedBox(height: 12),
                 Text("SARAN:", style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.orange[800])),
                 Text(saran, style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w800, color: color)),
@@ -168,10 +192,7 @@ class ServiceDashboardScreen extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Icon((data['type'] == 'motor') ? Icons.motorcycle : Icons.directions_car, color: Colors.red[700], size: 40),
-
-            // FIX: Menggunakan 'nama_kendaraan' agar tidak muncul "Unit"
             Text(data['nama_kendaraan'] ?? "Tanpa Nama", style: GoogleFonts.poppins(fontSize: 22, fontWeight: FontWeight.bold)),
-
             Text(data['plat'] ?? "-", style: GoogleFonts.poppins(color: Colors.grey[700], fontWeight: FontWeight.w600)),
           ],
         ),
