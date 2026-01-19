@@ -1,41 +1,47 @@
 name: sipantau
 description: Aplikasi Monitoring Kendaraan SIPANTAU
-publish_to: 'none'
+publish_to: "none"
 version: 1.0.0+1
-
+# flutter run -d chrome --web-browser-flag "--disable-web-security"
 environment:
-  sdk: '>=3.0.0 <4.0.0'
+  sdk: ">=3.0.0 <4.0.0"
 
 dependencies:
   flutter:
     sdk: flutter
-    
+
   # Font & Ikon
   google_fonts: ^6.1.0
   cupertino_icons: ^1.0.2
-  
+
   # Backend Firebase
   firebase_core: ^4.2.1
   firebase_auth: ^6.1.2
   cloud_firestore: ^6.1.0
   firebase_storage: ^13.0.4
   google_sign_in: ^6.2.1
-  
+
   # --- TAMBAHAN FITUR MAPS (FREE) & ML ---
   # Menggunakan Google Maps
   google_maps_flutter: ^2.10.0
   google_maps_flutter_web: ^0.5.9
+
+  # Menggunakan OpenStreetMap (Dibutuhkan oleh JourneyScreen & WorkshopScreen)
+  flutter_map: ^8.2.2
+  latlong2: ^0.9.1
   
   # Mengambil koordinat GPS/Lokasi untuk input model ML
   geolocator: ^14.0.2
   # Mengirim data ke API Python (Model .pkl)
   http: ^1.6.0
-  
+
   # Fitur Pendukung Lainnya
   shared_preferences: ^2.5.4
   image_picker: ^1.2.1
   intl: ^0.20.2
-  flutter_local_notifications: ^17.0.0
+  fl_chart: ^0.66.0
+  flutter_local_notifications: ^19.5.0
+  timezone: ^0.10.1
 
 dev_dependencies:
   flutter_test:

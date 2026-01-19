@@ -11,7 +11,6 @@ import 'history_login_screen.dart';
 import 'security_screen.dart';
 import 'about_app_screen.dart';
 
-// Variabel Global Notifikasi
 final ValueNotifier<bool> notificationNotifier = ValueNotifier<bool>(true);
 
 class ProfileScreen extends StatelessWidget {
@@ -45,31 +44,59 @@ class ProfileScreen extends StatelessWidget {
                                 fontSize: 28,
                                 fontWeight: FontWeight.w900,
                                 fontStyle: FontStyle.italic,
-                                color: const Color(0xFF5CB85C)))),
+                                color: textColor))),
                     const SizedBox(height: 20),
 
                     // FOTO PROFIL
                     Container(
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        border: Border.all(color: const Color(0xFF5CB85C), width: 3),
+                        border: Border.all(
+                            color: const Color(0xFF5CB85C), width: 3),
                       ),
                       child: CircleAvatar(
                         radius: 50,
                         backgroundColor: Colors.grey[200],
-                        backgroundImage: photoUrl != null ? NetworkImage(photoUrl) : null,
-                        child: photoUrl == null ? const Icon(Icons.person, size: 50, color: Colors.grey) : null,
+                        backgroundImage:
+                            photoUrl != null ? NetworkImage(photoUrl) : null,
+                        child: photoUrl == null
+                            ? const Icon(Icons.person,
+                                size: 50, color: Colors.grey)
+                            : null,
                       ),
                     ),
                     const SizedBox(height: 12),
-                    Text(displayName, style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: textColor)),
+                    Text(displayName,
+                        style: TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.bold,
+                            color: textColor)),
                     Text(email, style: const TextStyle(color: Colors.grey)),
                     const SizedBox(height: 30),
 
-                    _buildMenuTile(context, "Edit Profile", Icons.person_outline, cardColor, textColor, const EditProfileScreen()),
-                    _buildMenuTile(context, "History Login", Icons.history, cardColor, textColor, const HistoryLoginScreen()),
-                    _buildMenuTile(context, "Login and Security", Icons.security, cardColor, textColor, const SecurityScreen()),
-                    _buildMenuTile(context, "Tentang Aplikasi", Icons.info_outline, cardColor, textColor, const AboutAppScreen()),
+                    _buildMenuTile(
+                        context,
+                        "Edit Profile",
+                        Icons.person_outline,
+                        cardColor,
+                        textColor,
+                        const EditProfileScreen()),
+                    _buildMenuTile(context, "History Login", Icons.history,
+                        cardColor, textColor, const HistoryLoginScreen()),
+                    _buildMenuTile(
+                        context,
+                        "Login and Security",
+                        Icons.security,
+                        cardColor,
+                        textColor,
+                        const SecurityScreen()),
+                    _buildMenuTile(
+                        context,
+                        "Tentang Aplikasi",
+                        Icons.info_outline,
+                        cardColor,
+                        textColor,
+                        const AboutAppScreen()),
 
                     // TOGGLE NOTIFIKASI
                     ValueListenableBuilder<bool>(
@@ -77,46 +104,103 @@ class ProfileScreen extends StatelessWidget {
                       builder: (context, isNotifOn, child) {
                         return Container(
                           margin: const EdgeInsets.only(bottom: 12),
-                          decoration: BoxDecoration(color: cardColor, borderRadius: BorderRadius.circular(12)),
+                          decoration: BoxDecoration(
+                              color: cardColor,
+                              borderRadius: BorderRadius.circular(12)),
                           child: SwitchListTile(
-                            title: Text("Push Notifications", style: TextStyle(fontWeight: FontWeight.w600, color: textColor)),
-                            secondary: Icon(Icons.notifications_active_outlined, color: isNotifOn ? const Color(0xFF5CB85C) : Colors.grey),
-                            // PERBAIKAN: Gunakan activeThumbColor
-                            activeThumbColor: const Color(0xFF5CB85C), 
+                            title: Text("Push Notifications",
+                                style: TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    color: textColor)),
+                            secondary: Icon(Icons.notifications_active_outlined,
+                                color: isNotifOn
+                                    ? const Color(0xFF5CB85C)
+                                    : Colors.grey),
+                            activeThumbColor: const Color(0xFF5CB85C),
                             value: isNotifOn,
                             onChanged: (bool value) {
                               notificationNotifier.value = value;
-                              _showSnackBar(context, value ? "Notification is On" : "Notification is Off", value);
+                              _showSnackBar(
+                                  context,
+                                  value
+                                      ? "Notification is On"
+                                      : "Notification is Off",
+                                  value);
                             },
                           ),
                         );
                       },
                     ),
 
-                    // TOMBOL TEST NOTIFIKASI
+                    // 1. TOMBOL TEST SERVIS (Mengirim Int untuk sisaKm & sisaHari)
                     Material(
                       color: Colors.transparent,
                       child: Container(
                         margin: const EdgeInsets.only(bottom: 12),
-                        decoration: BoxDecoration(color: cardColor, borderRadius: BorderRadius.circular(12)),
+                        decoration: BoxDecoration(
+                            color: cardColor,
+                            borderRadius: BorderRadius.circular(12)),
                         child: ListTile(
                           onTap: () {
                             if (notificationNotifier.value) {
-                              // PERBAIKAN: Gunakan angka bulat (int)
                               NotificationHelper.sendServiceReminder(
                                 nama: "Avanza (Test AI)",
                                 plat: "H 1234 AB",
-                                sisaKm: 450, 
-                                sisaHari: 5,
+                                sisaKm: 450, // INT (Angka)
+                                sisaHari: 5, // INT (Angka)
                               );
-                              _showSnackBar(context, "Berhasil mengirim test!", true);
+                              _showSnackBar(context,
+                                  "Test Notifikasi Servis Terkirim!", true);
                             } else {
-                              _showSnackBar(context, "Aktifkan notifikasi dulu!", false);
+                              _showSnackBar(
+                                  context, "Aktifkan notifikasi dulu!", false);
                             }
                           },
-                          leading: const Icon(Icons.notification_important, color: Colors.orange),
-                          title: Text("Test Service Notification", style: TextStyle(fontWeight: FontWeight.w600, color: textColor)),
-                          subtitle: const Text("Simulasi pengingat AI", style: TextStyle(fontSize: 12)),
+                          leading: const Icon(Icons.notification_important,
+                              color: Colors.orange),
+                          title: Text("Test Notif Servis",
+                              style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  color: textColor)),
+                          subtitle: const Text("Simulasi pengingat servis",
+                              style: TextStyle(fontSize: 12)),
+                          trailing: const Icon(Icons.play_arrow, size: 18),
+                        ),
+                      ),
+                    ),
+
+                    // 2. TOMBOL TEST PAJAK (Mengirim String untuk tanggalPajak)
+                    Material(
+                      color: Colors.transparent,
+                      child: Container(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        decoration: BoxDecoration(
+                            color: cardColor,
+                            borderRadius: BorderRadius.circular(12)),
+                        child: ListTile(
+                          onTap: () {
+                            if (notificationNotifier.value) {
+                              NotificationHelper.sendTaxReminder(
+                                nama: "Avanza (Test AI)",
+                                plat: "H 1234 AB",
+                                tanggalPajak:
+                                    "20 Oktober 2025", // STRING (Teks)
+                              );
+                              _showSnackBar(context,
+                                  "Test Notifikasi Pajak Terkirim!", true);
+                            } else {
+                              _showSnackBar(
+                                  context, "Aktifkan notifikasi dulu!", false);
+                            }
+                          },
+                          leading: const Icon(Icons.receipt_long,
+                              color: Colors.blue),
+                          title: Text("Test Notif Pajak",
+                              style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  color: textColor)),
+                          subtitle: const Text("Simulasi pengingat pajak",
+                              style: TextStyle(fontSize: 12)),
                           trailing: const Icon(Icons.play_arrow, size: 18),
                         ),
                       ),
@@ -125,14 +209,20 @@ class ProfileScreen extends StatelessWidget {
                     // TOGGLE DARK MODE
                     Container(
                       margin: const EdgeInsets.only(bottom: 12),
-                      decoration: BoxDecoration(color: cardColor, borderRadius: BorderRadius.circular(12)),
+                      decoration: BoxDecoration(
+                          color: cardColor,
+                          borderRadius: BorderRadius.circular(12)),
                       child: SwitchListTile(
-                        title: Text("Dark Mode", style: TextStyle(fontWeight: FontWeight.w600, color: textColor)),
-                        secondary: Icon(Icons.dark_mode_outlined, color: textColor),
+                        title: Text("Dark Mode",
+                            style: TextStyle(
+                                fontWeight: FontWeight.w600, color: textColor)),
+                        secondary:
+                            Icon(Icons.dark_mode_outlined, color: textColor),
                         activeThumbColor: const Color(0xFF5CB85C),
                         value: themeNotifier.value == ThemeMode.dark,
                         onChanged: (bool value) {
-                          themeNotifier.value = value ? ThemeMode.dark : ThemeMode.light;
+                          themeNotifier.value =
+                              value ? ThemeMode.dark : ThemeMode.light;
                         },
                       ),
                     ),
@@ -143,14 +233,24 @@ class ProfileScreen extends StatelessWidget {
                       width: double.infinity,
                       height: 50,
                       child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                        style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.red,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12))),
                         onPressed: () async {
                           await FirebaseAuth.instance.signOut();
                           if (context.mounted) {
-                            Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (context) => const LoginScreen()), (route) => false);
+                            Navigator.pushAndRemoveUntil(
+                                context,
+                                MaterialPageRoute(
+                                    builder: (context) => const LoginScreen()),
+                                (route) => false);
                           }
                         },
-                        child: const Text("Log Out", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                        child: const Text("Log Out",
+                            style: TextStyle(
+                                fontSize: 16, fontWeight: FontWeight.bold)),
                       ),
                     )
                   ],
@@ -165,23 +265,29 @@ class ProfileScreen extends StatelessWidget {
     ScaffoldMessenger.of(context).removeCurrentSnackBar();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(message, style: const TextStyle(fontWeight: FontWeight.bold)),
+        content:
+            Text(message, style: const TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: isSuccess ? const Color(0xFF5CB85C) : Colors.red,
         behavior: SnackBarBehavior.floating,
       ),
     );
   }
 
-  Widget _buildMenuTile(BuildContext context, String title, IconData icon, Color bgColor, Color txtColor, Widget destination) {
+  Widget _buildMenuTile(BuildContext context, String title, IconData icon,
+      Color bgColor, Color txtColor, Widget destination) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(color: bgColor, borderRadius: BorderRadius.circular(12)),
+      decoration: BoxDecoration(
+          color: bgColor, borderRadius: BorderRadius.circular(12)),
       child: ListTile(
         leading: Icon(icon, color: txtColor),
-        title: Text(title, style: TextStyle(fontWeight: FontWeight.w600, color: txtColor)),
-        trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
+        title: Text(title,
+            style: TextStyle(fontWeight: FontWeight.w600, color: txtColor)),
+        trailing:
+            const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
         onTap: () {
-          Navigator.push(context, MaterialPageRoute(builder: (context) => destination));
+          Navigator.push(
+              context, MaterialPageRoute(builder: (context) => destination));
         },
       ),
     );

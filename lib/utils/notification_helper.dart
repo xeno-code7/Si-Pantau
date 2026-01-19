@@ -1,118 +1,139 @@
-import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+
+import 'package:timezone/data/latest_all.dart' as tz;
+import 'package:timezone/timezone.dart' as tz;
 
 class NotificationHelper {
   static final FlutterLocalNotificationsPlugin _notificationsPlugin =
       FlutterLocalNotificationsPlugin();
 
   static Future<void> init() async {
-    // 1. Inisialisasi Ikon (Wajib pakai ic_launcher agar tidak error resource)
-    const AndroidInitializationSettings initializationSettingsAndroid =
+    tz.initializeTimeZones();
+    try {
+      tz.setLocalLocation(tz.getLocation('Asia/Jakarta'));
+    } catch (e) {
+      debugPrint("Gagal set lokasi timezone: $e");
+    }
+
+    const AndroidInitializationSettings androidSettings =
         AndroidInitializationSettings('@mipmap/ic_launcher');
 
-    const InitializationSettings initializationSettings = InitializationSettings(
-      android: initializationSettingsAndroid,
+    const DarwinInitializationSettings iosSettings =
+        DarwinInitializationSettings(
+      requestAlertPermission: true,
+      requestBadgePermission: true,
+      requestSoundPermission: true,
     );
 
-    await _notificationsPlugin.initialize(initializationSettings);
-
-    // 2. BUAT CHANNEL (Wajib untuk Android 8.0 ke atas agar notifikasi muncul)
-    
-    // --- Channel untuk Servis ---
-    const AndroidNotificationChannel serviceChannel = AndroidNotificationChannel(
-      'sipantau_service_channel', 
-      'Notifikasi Servis SIPANTAU',
-      description: 'Saluran untuk pengingat servis kendaraan AI',
-      importance: Importance.max,
-      playSound: true,
-      enableVibration: true,
+    const InitializationSettings settings = InitializationSettings(
+      android: androidSettings,
+      iOS: iosSettings,
     );
 
-    // --- Channel untuk Pajak (Baru) ---
-    const AndroidNotificationChannel taxChannel = AndroidNotificationChannel(
-      'sipantau_tax_channel', 
-      'Notifikasi Pajak SIPANTAU',
-      description: 'Saluran untuk pengingat jatuh tempo pajak kendaraan',
-      importance: Importance.max,
-      playSound: true,
-      enableVibration: true,
-    );
-
-    final androidPlugin = _notificationsPlugin.resolvePlatformSpecificImplementation<
-        AndroidFlutterLocalNotificationsPlugin>();
-    
-    if (androidPlugin != null) {
-      // Daftarkan kedua channel ke sistem Android
-      await androidPlugin.createNotificationChannel(serviceChannel);
-      await androidPlugin.createNotificationChannel(taxChannel);
-      
-      // Minta izin pop-up ke user (Android 13+)
-      await androidPlugin.requestNotificationsPermission();
-    }
+    await _notificationsPlugin.initialize(settings);
   }
 
-  // --- LOGIC REMINDER SERVIS (TETAP) ---
+  // MANUAL SERVIS
   static Future<void> sendServiceReminder({
     required String nama,
     required String plat,
     required int sisaKm,
     required int sisaHari,
   }) async {
-    try {
-      final AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
-        'sipantau_service_channel',
-        'Notifikasi Servis SIPANTAU',
-        importance: Importance.max,
-        priority: Priority.high,
-        ticker: 'ticker',
-        icon: '@mipmap/ic_launcher',
-      );
+    const AndroidNotificationDetails androidDetails =
+        AndroidNotificationDetails(
+      'channel_service_id',
+      'Pengingat Servis',
+      channelDescription: 'Notifikasi untuk jadwal servis kendaraan',
+      importance: Importance.max,
+      priority: Priority.high,
+      icon: '@mipmap/ic_launcher',
+      color: Color(0xFF5CB85C),
+    );
 
-      final NotificationDetails platformDetails =
-          NotificationDetails(android: androidDetails);
+    const NotificationDetails platformDetails =
+        NotificationDetails(android: androidDetails);
 
-      await _notificationsPlugin.show(
-        DateTime.now().millisecond, 
-        'Waktunya Servis: $nama',
-        'Sisa $sisaKm KM atau $sisaHari hari lagi ($plat)',
-        platformDetails,
-      );
-      debugPrint("Notifikasi Servis Berhasil Dikirim!");
-    } catch (e) {
-      debugPrint("Gagal Kirim Notifikasi Servis: $e");
-    }
+    await _notificationsPlugin.show(
+      0,
+      'Waktunya Servis! 🛠️',
+      '$nama ($plat) sisa $sisaKm KM lagi atau $sisaHari hari lagi.',
+      platformDetails,
+    );
   }
 
-  // --- LOGIC REMINDER PAJAK (BARU) ---
+  // MANUAL PAJAK
   static Future<void> sendTaxReminder({
     required String nama,
     required String plat,
     required String tanggalPajak,
   }) async {
-    try {
-      final AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
-        'sipantau_tax_channel', // Menggunakan channel pajak yang baru dibuat
-        'Notifikasi Pajak SIPANTAU',
-        importance: Importance.max,
-        priority: Priority.high,
-        ticker: 'ticker',
-        icon: '@mipmap/ic_launcher',
-      );
+    const AndroidNotificationDetails androidDetails =
+        AndroidNotificationDetails(
+      'channel_tax_id',
+      'Pengingat Pajak',
+      channelDescription: 'Notifikasi untuk jatuh tempo pajak kendaraan',
+      importance: Importance.max,
+      priority: Priority.high,
+      icon: '@mipmap/ic_launcher',
+      color: Colors.orange,
+    );
 
-      final NotificationDetails platformDetails =
-          NotificationDetails(android: androidDetails);
+    const NotificationDetails platformDetails =
+        NotificationDetails(android: androidDetails);
 
-      // Mengirim pesan notifikasi sesuai permintaan kamu
-      await _notificationsPlugin.show(
-        // ID Unik (ditambah 1 agar tidak bentrok dengan servis di milidetik yang sama)
-        DateTime.now().millisecond + 1, 
-        'Peringatan Pajak Kendaraan',
-        'Kendaraan dengan merk $nama dan nopol $plat pajaknya akan habis pada tanggal $tanggalPajak.',
-        platformDetails,
-      );
-      debugPrint("Notifikasi Pajak Berhasil Dikirim!");
-    } catch (e) {
-      debugPrint("Gagal Kirim Notifikasi Pajak: $e");
+    await _notificationsPlugin.show(
+      1,
+      'Pajak Segera Habis! 📄',
+      'Pajak $nama ($plat) jatuh tempo pada $tanggalPajak. Segera perpanjang STNK!',
+      platformDetails,
+    );
+  }
+
+  // OTOMATIS JADWAL
+  static Future<void> scheduleNotification({
+    required int id,
+    required String title,
+    required String body,
+    required DateTime scheduledDate,
+  }) async {
+    final scheduledTime = tz.TZDateTime(
+      tz.local,
+      scheduledDate.year,
+      scheduledDate.month,
+      scheduledDate.day,
+      8,
+      0,
+    );
+
+    if (scheduledTime.isBefore(tz.TZDateTime.now(tz.local))) {
+      return;
     }
+
+    await _notificationsPlugin.zonedSchedule(
+      id,
+      title,
+      body,
+      scheduledTime,
+      const NotificationDetails(
+        android: AndroidNotificationDetails(
+          'channel_reminder_id',
+          'Pengingat Otomatis',
+          channelDescription: 'Notifikasi jadwal otomatis',
+          importance: Importance.max,
+          priority: Priority.high,
+          icon: '@mipmap/ic_launcher',
+          color: Color(0xFF5CB85C),
+        ),
+      ),
+      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      // Hapus parameter uiLocalNotificationDateInterpretation
+      // Karena default-nya sudah absoluteTime
+    );
+  }
+
+  static Future<void> cancelAll() async {
+    await _notificationsPlugin.cancelAll();
   }
 }
