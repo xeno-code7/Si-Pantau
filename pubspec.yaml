@@ -22,10 +22,10 @@ dependencies:
   google_sign_in: ^6.2.1
   
   # --- TAMBAHAN FITUR MAPS (FREE) & ML ---
-  # Menggunakan OpenStreetMap (Tanpa Billing & Tanpa API Key)
-  flutter_map: ^8.2.2
-  # Library pendukung koordinat untuk flutter_map
-  latlong2: ^0.9.1
+  # Menggunakan Google Maps
+  google_maps_flutter: ^2.10.0
+  google_maps_flutter_web: ^0.5.9
+  
   # Mengambil koordinat GPS/Lokasi untuk input model ML
   geolocator: ^14.0.2
   # Mengirim data ke API Python (Model .pkl)

@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_auth/firebase_auth.dart'; 
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
+import 'package:intl/date_symbol_data_local.dart';
 
 import 'utils/notification_helper.dart';
 import 'login_screen.dart';
@@ -11,23 +13,31 @@ import 'main_navigation.dart';
 import 'profile/profile_screen.dart';
 
 final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.light);
+final ValueNotifier<bool> notificationNotifier = ValueNotifier(true);
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
+
+  await initializeDateFormatting('id_ID', null);
   await NotificationHelper.init();
 
-  const firebaseOptions = FirebaseOptions(
-    apiKey: "AIzaSyBFGKtYHdRsTf_g_J_o9fMboiziQrXx7xs",
-    authDomain: "test-sipantau.firebaseapp.com",
-    projectId: "test-sipantau",
-    storageBucket: "test-sipantau.firebasestorage.app",
-    messagingSenderId: "313304355828",
-    appId: "1:313304355828:web:30efd9dc9ce5a4ba009fa1",
-    measurementId: "G-80JJR4DSY5",
-  );
+  if (kIsWeb) {
+    // Konfigurasi khusus untuk WEB
+    const firebaseOptions = FirebaseOptions(
+      apiKey: "AIzaSyBFGKtYHdRsTf_g_J_o9fMboiziQrXx7xs",
+      authDomain: "test-sipantau.firebaseapp.com",
+      projectId: "test-sipantau",
+      storageBucket: "test-sipantau.firebasestorage.app",
+      messagingSenderId: "313304355828",
+      appId: "1:313304355828:web:30efd9dc9ce5a4ba009fa1",
+      measurementId: "G-80JJR4DSY5",
+    );
+    await Firebase.initializeApp(options: firebaseOptions);
+  } else {
+    // Konfigurasi untuk Android/iOS (Otomatis baca google-services.json)
+    await Firebase.initializeApp();
+  }
 
-  await Firebase.initializeApp(options: firebaseOptions);
   runApp(const SipantauApp());
 }
 
@@ -46,30 +56,34 @@ Future<void> checkAllVehiclesMaintenance(String uid) async {
       final String nama = data['nama_kendaraan'] ?? "Kendaraan";
       final String plat = data['plat'] ?? "-";
       final String jenis = data['jenis_kendaraan'] ?? "motor";
-      
+
       // --- LOGIKA NOTIFIKASI SERVIS ---
-      final double sisaKmRaw = double.tryParse(data['prediksi_rul']?.toString() ?? "0") ?? 0;
+      final double sisaKmRaw =
+          double.tryParse(data['prediksi_rul']?.toString() ?? "0") ?? 0;
       int sisaHariServis = 0;
       final rawServiceDate = data['last_service_date'];
-      
+
       if (rawServiceDate != null) {
-        DateTime lastDate = (rawServiceDate is Timestamp) ? rawServiceDate.toDate() : DateTime.now();
+        DateTime lastDate = (rawServiceDate is Timestamp)
+            ? rawServiceDate.toDate()
+            : DateTime.now();
         int bulanTambahan = (jenis.toLowerCase() == "mobil") ? 5 : 2;
-        
+
         // PERBAIKAN: Menggunakan lastDate yang sudah didefinisikan
-        DateTime targetDate = DateTime(lastDate.year, lastDate.month + bulanTambahan, lastDate.day);
+        DateTime targetDate = DateTime(
+            lastDate.year, lastDate.month + bulanTambahan, lastDate.day);
         sisaHariServis = targetDate.difference(DateTime.now()).inDays;
       }
 
-      bool triggerServis = (jenis.toLowerCase() == "mobil") 
-          ? (sisaKmRaw <= 1000 || sisaHariServis <= 7) 
+      bool triggerServis = (jenis.toLowerCase() == "mobil")
+          ? (sisaKmRaw <= 1000 || sisaHariServis <= 7)
           : (sisaKmRaw <= 100 || sisaHariServis <= 7);
 
       if (triggerServis) {
         NotificationHelper.sendServiceReminder(
           nama: nama,
           plat: plat,
-          sisaKm: sisaKmRaw.round(), 
+          sisaKm: sisaKmRaw.round(),
           sisaHari: sisaHariServis,
         );
       }
@@ -79,12 +93,13 @@ Future<void> checkAllVehiclesMaintenance(String uid) async {
       if (rawPajak != null && rawPajak is Timestamp) {
         DateTime pajakDate = rawPajak.toDate();
         DateTime today = DateTime.now();
-        
+
         DateTime todayPure = DateTime(today.year, today.month, today.day);
-        DateTime pajakPure = DateTime(pajakDate.year, pajakDate.month, pajakDate.day);
-        
+        DateTime pajakPure =
+            DateTime(pajakDate.year, pajakDate.month, pajakDate.day);
+
         int selisihHariPajak = pajakPure.difference(todayPure).inDays;
-        
+
         if (selisihHariPajak == 7) {
           NotificationHelper.sendTaxReminder(
             nama: nama,
@@ -114,7 +129,9 @@ class SipantauApp extends StatelessWidget {
           theme: ThemeData(
             brightness: Brightness.light,
             primaryColor: const Color(0xFF5CB85C),
-            colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF5CB85C), brightness: Brightness.light),
+            colorScheme: ColorScheme.fromSeed(
+                seedColor: const Color(0xFF5CB85C),
+                brightness: Brightness.light),
             useMaterial3: true,
             textTheme: GoogleFonts.poppinsTextTheme(),
             scaffoldBackgroundColor: const Color(0xFFF5F5F5),
@@ -122,7 +139,9 @@ class SipantauApp extends StatelessWidget {
           darkTheme: ThemeData(
             brightness: Brightness.dark,
             primaryColor: const Color(0xFF5CB85C),
-            colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF5CB85C), brightness: Brightness.dark),
+            colorScheme: ColorScheme.fromSeed(
+                seedColor: const Color(0xFF5CB85C),
+                brightness: Brightness.dark),
             useMaterial3: true,
             textTheme: GoogleFonts.poppinsTextTheme(ThemeData.dark().textTheme),
             scaffoldBackgroundColor: const Color(0xFF121212),
@@ -132,7 +151,8 @@ class SipantauApp extends StatelessWidget {
             stream: FirebaseAuth.instance.authStateChanges(),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Scaffold(body: Center(child: CircularProgressIndicator()));
+                return const Scaffold(
+                    body: Center(child: CircularProgressIndicator()));
               }
               if (snapshot.hasData) {
                 checkAllVehiclesMaintenance(snapshot.data!.uid);

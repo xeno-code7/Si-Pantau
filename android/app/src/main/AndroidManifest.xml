@@ -32,6 +32,10 @@
             android:name="com.google.firebase.messaging.default_notification_icon"
             android:resource="@mipmap/ic_launcher" />
 
+        <meta-data
+            android:name="com.google.android.geo.API_KEY"
+            android:value="MASUKKAN_API_KEY_ANDA_DISINI"/>
+
         <receiver android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver"
             android:exported="true">
             <intent-filter>
