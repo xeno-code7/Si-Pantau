@@ -48,6 +48,7 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^2.0.0
+  flutter_launcher_icons: ^0.13.1
 
 flutter:
   uses-material-design: true
@@ -55,3 +56,14 @@ flutter:
   # Mendaftarkan folder assets
   assets:
     - assets/
+    - assets/icon/
+
+flutter_launcher_icons:
+  android: "ic_launcher"
+  ios: true
+  image_path: "assets/icon/iconPutih.jpeg"
+  web:
+    generate: true
+    image_path: "assets/icon/iconPutih.jpeg"
+    background_color: "#ffffff"
+    theme_color: "#ffffff"

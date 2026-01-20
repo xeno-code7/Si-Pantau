@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 // [1] IMPORT GOOGLE FONTS
 import 'package:google_fonts/google_fonts.dart';
 
+import '../service/trip_service.dart'; // Import TripService
 // Import JourneyScreen
 import '../service/journey_screen.dart';
 
@@ -180,6 +181,8 @@ class _CarScreenState extends State<CarScreen> {
     final String nama = data['nama_kendaraan'] ?? "-";
     final String plat = data['plat'] ?? "-";
     final String? photoUrl = data['photo_url'];
+    // [BARU] Cek status apakah sedang dipakai
+    final bool isUsed = data['is_used'] == true;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
@@ -207,35 +210,50 @@ class _CarScreenState extends State<CarScreen> {
                 const Icon(Icons.stars, color: Colors.red, size: 30),
                 const SizedBox(height: 8),
                 Text(nama,
+                    maxLines: 2, // Batasi 2 baris
+                    overflow:
+                        TextOverflow.ellipsis, // Titik-titik jika kepanjangan
                     style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
                         color: textColor)),
-                Text(plat, style: const TextStyle(color: Colors.grey)),
+                Text(plat,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: Colors.grey)),
                 const SizedBox(height: 12),
                 SizedBox(
                   width: 100,
                   height: 35,
                   child: ElevatedButton(
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => JourneyScreen(
-                            vehicleId: docId,
-                            vehicleData: data,
-                          ),
-                        ),
-                      );
-                    },
+                    // [BARU] Disable tombol jika sedang dipakai
+                    onPressed: isUsed
+                        ? null
+                        : () {
+                            // 1. Aktifkan Status Perjalanan Global
+                            TripService().startTrip(docId, data);
+
+                            // 2. Pindah ke halaman Journey
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => JourneyScreen(
+                                  vehicleId: docId,
+                                  vehicleData: data,
+                                ),
+                              ),
+                            );
+                          },
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF8CC67E),
+                      // Ubah warna jadi abu-abu jika disabled
+                      backgroundColor:
+                          isUsed ? Colors.grey : const Color(0xFF8CC67E),
                       shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(8)),
                       elevation: 0,
                     ),
-                    child: const Text("Pilih",
-                        style: TextStyle(
+                    child: Text(isUsed ? "Dipakai" : "Pilih",
+                        style: const TextStyle(
                             color: Colors.white, fontWeight: FontWeight.bold)),
                   ),
                 ),

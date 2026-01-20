@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart'; // Ganti ke Google Maps
 import 'package:geolocator/geolocator.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -14,11 +13,12 @@ class WorkshopScreen extends StatefulWidget {
 }
 
 class _WorkshopScreenState extends State<WorkshopScreen> {
-  final MapController _mapController = MapController();
+  GoogleMapController? _mapController; // Controller Google Maps
 
   // Default lokasi sementara (Semarang)
   LatLng _currentLocation = const LatLng(-6.9932, 110.4203);
   bool _isLoading = true;
+  Set<Marker> _markers = {}; // Set Marker untuk Google Maps
 
   // Data Dummy Bengkel
   final List<Map<String, dynamic>> _workshops = [
@@ -64,8 +64,13 @@ class _WorkshopScreenState extends State<WorkshopScreen> {
           setState(() {
             _currentLocation = LatLng(position.latitude, position.longitude);
             _isLoading = false;
+            _generateMarkers(); // Buat marker setelah lokasi didapat
           });
-          _mapController.move(_currentLocation, 14);
+
+          // Pindahkan kamera jika map sudah siap
+          _mapController?.animateCamera(
+            CameraUpdate.newLatLngZoom(_currentLocation, 15),
+          );
         }
       } else {
         // Jika ditolak, pakai lokasi default dan matikan loading
@@ -75,6 +80,28 @@ class _WorkshopScreenState extends State<WorkshopScreen> {
       debugPrint("Gagal ambil lokasi: $e");
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  // Fungsi membuat Marker Google Maps
+  void _generateMarkers() {
+    _markers = _workshops.map((ws) {
+      return Marker(
+        markerId: MarkerId(ws['name']),
+        position: ws['loc'],
+        icon: BitmapDescriptor.defaultMarkerWithHue(
+          ws['type'] == 'spklu'
+              ? BitmapDescriptor.hueGreen
+              : BitmapDescriptor.hueRed,
+        ),
+        infoWindow: InfoWindow(
+          title: ws['name'],
+          snippet: ws['type'] == 'spklu'
+              ? "Stasiun Pengisian Listrik"
+              : "Bengkel Umum",
+          onTap: () => _showInfo(ws),
+        ),
+      );
+    }).toSet();
   }
 
   @override
@@ -90,48 +117,19 @@ class _WorkshopScreenState extends State<WorkshopScreen> {
       ),
       body: Stack(
         children: [
-          FlutterMap(
-            mapController: _mapController,
-            options: MapOptions(
-              initialCenter: _currentLocation,
-              initialZoom: 14.0,
+          GoogleMap(
+            initialCameraPosition: CameraPosition(
+              target: _currentLocation,
+              zoom: 14.0,
             ),
-            children: [
-              TileLayer(
-                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                userAgentPackageName: 'com.example.sipantau',
-              ),
-              MarkerLayer(
-                markers: [
-                  // Lokasi Saya
-                  Marker(
-                    point: _currentLocation,
-                    width: 40,
-                    height: 40,
-                    child: const Icon(Icons.my_location,
-                        color: Colors.blue, size: 30),
-                  ),
-                  // Lokasi Bengkel
-                  ..._workshops.map((ws) => Marker(
-                        point: ws['loc'],
-                        width: 40,
-                        height: 40,
-                        child: GestureDetector(
-                          onTap: () => _showInfo(ws),
-                          child: Icon(
-                            ws['type'] == 'spklu'
-                                ? Icons.ev_station
-                                : Icons.car_repair,
-                            color: ws['type'] == 'spklu'
-                                ? Colors.green
-                                : Colors.red,
-                            size: 40,
-                          ),
-                        ),
-                      )),
-                ],
-              ),
-            ],
+            markers: _markers,
+            myLocationEnabled: true, // Menampilkan titik biru lokasi saya
+            myLocationButtonEnabled: true, // Tombol kembali ke lokasi saya
+            zoomControlsEnabled: false, // UI lebih bersih
+            mapType: MapType.normal, // Tampilan standar Google Maps
+            onMapCreated: (GoogleMapController controller) {
+              _mapController = controller;
+            },
           ),
           if (_isLoading)
             const Center(
@@ -150,12 +148,13 @@ class _WorkshopScreenState extends State<WorkshopScreen> {
   void _showInfo(Map<String, dynamic> data) {
     showModalBottomSheet(
         context: context,
+        isScrollControlled: true, // Agar bisa menyesuaikan konten
         builder: (context) => Container(
-              height: 180,
               padding: const EdgeInsets.all(20),
               width: double.infinity,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min, // Tinggi mengikuti konten
                 children: [
                   Text(data['name'],
                       style: GoogleFonts.poppins(
@@ -166,7 +165,7 @@ class _WorkshopScreenState extends State<WorkshopScreen> {
                           ? "SPKLU (Listrik)"
                           : "Bengkel Umum",
                       style: const TextStyle(color: Colors.grey)),
-                  const Spacer(),
+                  const SizedBox(height: 20),
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
