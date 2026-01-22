@@ -35,53 +35,55 @@ class ServiceDashboardScreen extends StatelessWidget {
           var data = snapshot.data!.data() as Map<String, dynamic>;
 
           // --- 1. AMBIL DATA DASAR ---
-          String type = (data['type'] ?? 'mobil').toString().toLowerCase();
-          int currentOdo = data['odo'] ?? 0; // Disinkronkan dengan journey_screen
+          // Mendukung field 'type' atau 'jenis_kendaraan' agar sinkron dengan CarAddScreen
+          String type = (data['jenis_kendaraan'] ?? data['type'] ?? 'mobil').toString().toLowerCase(); 
+          int currentOdo = data['odo'] ?? 0;
           int lastServiceOdo = data['last_service_odo'] ?? 0;
           DateTime lastServiceDate = (data['last_service_date'] as Timestamp).toDate();
 
-          // --- 2. PANGGIL LOGIKA DARI RUL_HELPER ---
-          // Menggunakan logic terpusat agar konsisten
-          RulResult result = RulHelper.hitungRul(
-            jenisKendaraan: type,
-            odoSekarang: currentOdo,
-            odoTerakhirServis: lastServiceOdo,
-            tanggalTerakhirServis: lastServiceDate,
-          );
+          // --- 2. LOGIKA HYBRID METHOD ---
+          
+          // A. LOGIKA KM: Mengambil hasil prediksi Random Forest dari Hugging Face yang tersimpan di Firestore [cite: 1253, 1361]
+          double sisaKmAI = double.tryParse(data['prediksi_rul']?.toString() ?? "0.0") ?? 0.0;
 
-          // --- 3. MAPPING HASIL HELPER KE UI ---
+          // B. LOGIKA HARI: Countdown manual berdasarkan servis terakhir (Mobil: 6 bulan, Motor: 2 bulan) [cite: 360, 1469]
+          int intervalBulan = (type == 'motor') ? 2 : 6;
+          DateTime nextServiceDate = DateTime(lastServiceDate.year, lastServiceDate.month + intervalBulan, lastServiceDate.day);
+          int sisaHariManual = nextServiceDate.difference(DateTime.now()).inDays;
+
+          // --- 3. PENENTUAN STATUS & WARNA UI ---
           Color statusColor;
+          String statusBadge;
           String saranUtama;
           List<String> checkList;
 
-          // Penentuan UI berdasarkan status dari RulHelper
-          if (result.status == "HARUS SERVIS") {
+          // Threshold Hybrid: Jika salah satu parameter (KM AI atau Hari) terpenuhi
+          if (sisaKmAI <= 200 || sisaHariManual <= 7) {
             statusColor = Colors.red;
+            statusBadge = "HARUS SERVIS";
             saranUtama = "WAKTUNYA GANTI OLI";
             checkList = (type == 'motor')
                 ? ["Ganti Oli Mesin", "Cek Rantai", "Cek Rem"]
                 : ["Ganti Oli Mesin", "Filter Oli", "Cek General"];
-          } else if (result.status == "MENDEKATI SERVIS") {
+          } else if (sisaKmAI <= 1000 || sisaHariManual <= 14) {
             statusColor = Colors.orange;
+            statusBadge = "MENDEKATI SERVIS";
             saranUtama = "PERSIAPKAN SERVIS";
             checkList = (type == 'motor')
                 ? ["Cek Rem", "Cek Busi"]
                 : ["Cek Air Radiator", "Cek Aki"];
           } else {
             statusColor = Colors.green;
+            statusBadge = "KENDARAAN PRIMA";
             saranUtama = "KENDARAAN PRIMA";
             checkList = (type == 'motor')
                 ? ["Cek Tekanan Ban", "Pembersihan"]
                 : ["Cek Air Radiator", "Cek Wiper"];
           }
 
-          // Hitung estimasi tanggal untuk tampilan (tetap 2 bln motor / 6 bln mobil)
-          int intervalMonth = (type == 'motor') ? 2 : 6;
-          DateTime nextServiceDate = DateTime(lastServiceDate.year, lastServiceDate.month + intervalMonth, lastServiceDate.day);
-
-          // Hitung pemakaian KM untuk ditampilkan di card
+          // Hitung pemakaian KM untuk tampilan card
           int odoDiff = currentOdo - lastServiceOdo;
-          int limitKm = (type == 'motor') ? 3000 : 8000; // Sesuai RulHelper
+          int limitKm = (type == 'motor') ? 3000 : 8000;
 
           return SingleChildScrollView(
             padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -91,17 +93,17 @@ class ServiceDashboardScreen extends StatelessWidget {
                 _buildHeader(data),
                 const SizedBox(height: 24),
 
-                // Menampilkan status sisa hari/KM dari RulHelper
+                // Menampilkan status sisa hari (Manual) dan sisa KM (AI Random Forest)
                 _buildEstimationCard(
                     nextServiceDate,
-                    result.status,
+                    statusBadge,
                     statusColor,
                     saranUtama,
                     checkList,
                     odoDiff,
                     limitKm,
-                    result.sisaKm,
-                    result.sisaHari
+                    sisaKmAI.toInt(),
+                    sisaHariManual
                 ),
 
                 const SizedBox(height: 20),
@@ -117,7 +119,7 @@ class ServiceDashboardScreen extends StatelessWidget {
     );
   }
 
-  // --- UI KARTU ESTIMASI (DIPERBARUI) ---
+  // --- UI KARTU ESTIMASI ---
   Widget _buildEstimationCard(DateTime nextDate, String badge, Color color, String saran, List<String> tags, int diff, int limit, int sisaKm, int sisaHari) {
     return Container(
       padding: const EdgeInsets.all(20),
@@ -175,7 +177,7 @@ class ServiceDashboardScreen extends StatelessWidget {
           ListTile(
             contentPadding: EdgeInsets.zero,
             leading: const CircleAvatar(backgroundColor: Color(0xFFE3F2FD), child: Icon(Icons.history, color: Colors.blue)),
-            title: Text(data['last_service_type'] ?? "Servis Awal", style: GoogleFonts.poppins(fontWeight: FontWeight.bold)),
+            title: Text(data['last_service_type'] ?? data['service_type'] ?? "Servis Awal", style: GoogleFonts.poppins(fontWeight: FontWeight.bold)),
             subtitle: Text("${DateFormat('dd MMM yyyy').format(lastDate)} • $lastOdo KM"),
           ),
         ],
@@ -185,13 +187,14 @@ class ServiceDashboardScreen extends StatelessWidget {
 
   // --- HELPERS ---
   Widget _buildHeader(Map<String, dynamic> data) {
+    String type = (data['jenis_kendaraan'] ?? data['type'] ?? 'mobil').toString().toLowerCase();
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon((data['type'] == 'motor') ? Icons.motorcycle : Icons.directions_car, color: Colors.red[700], size: 40),
+            Icon((type == 'motor') ? Icons.motorcycle : Icons.directions_car, color: Colors.red[700], size: 40),
             Text(data['nama_kendaraan'] ?? "Tanpa Nama", style: GoogleFonts.poppins(fontSize: 22, fontWeight: FontWeight.bold)),
             Text(data['plat'] ?? "-", style: GoogleFonts.poppins(color: Colors.grey[700], fontWeight: FontWeight.w600)),
           ],

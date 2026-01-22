@@ -164,7 +164,7 @@ class CarDetailScreen extends StatelessWidget {
         if (lastServiceDate != null) {
           int bulanTambahan =
               (data['jenis_kendaraan']?.toString().toLowerCase() == "mobil")
-                  ? 5
+                  ? 6
                   : 2;
           DateTime targetDate = DateTime(lastServiceDate.year,
               lastServiceDate.month + bulanTambahan, lastServiceDate.day);
